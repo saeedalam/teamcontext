@@ -1,0 +1,102 @@
+{
+  "name": "teamcontext",
+  "displayName": "TeamContext",
+  "description": "The Technical Memory That Outlives Everyone — knowledge risks, code experts, decisions, and compliance in your IDE",
+  "version": "0.1.0",
+  "publisher": "teamcontext",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "workspaceContains:.teamcontext"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "teamcontext",
+          "title": "TeamContext",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "teamcontext": [
+        {
+          "id": "teamcontext.risks",
+          "name": "Knowledge Risks"
+        },
+        {
+          "id": "teamcontext.decisions",
+          "name": "Decisions"
+        },
+        {
+          "id": "teamcontext.warnings",
+          "name": "Warnings"
+        },
+        {
+          "id": "teamcontext.experts",
+          "name": "Experts"
+        },
+        {
+          "id": "teamcontext.feed",
+          "name": "Activity Feed"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "teamcontext.refresh",
+        "title": "Refresh",
+        "category": "TeamContext",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "teamcontext.checkCompliance",
+        "title": "Check Compliance",
+        "category": "TeamContext"
+      },
+      {
+        "command": "teamcontext.showExperts",
+        "title": "Show Experts for Current File",
+        "category": "TeamContext"
+      },
+      {
+        "command": "teamcontext.sync",
+        "title": "Sync Knowledge",
+        "category": "TeamContext"
+      },
+      {
+        "command": "teamcontext.feed",
+        "title": "Show Activity Feed",
+        "category": "TeamContext"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "teamcontext.refresh",
+          "when": "view =~ /^teamcontext\\./",
+          "group": "navigation"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^2.22.0",
+    "typescript": "^5.3.0"
+  }
+}
