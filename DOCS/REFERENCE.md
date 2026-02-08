@@ -294,7 +294,9 @@ These are the tools the AI agent calls when you interact through your IDE. You d
 
 **`get_skeleton`** — Code structure without bodies (~90% token savings)
 ```
-"Show me the skeleton of payment.service.ts"
+"Show me the skeleton of apps/backend"
+→ path: "apps/backend"
+→ recursive: false (default: false, set true for deep walk)
 → Returns classes, methods, signatures, types — no implementation
 ```
 
@@ -373,10 +375,12 @@ These are the tools the AI agent calls when you interact through your IDE. You d
 → Supports: TypeScript, Go, Python
 ```
 
-**`get_code_map`** — Hierarchical file tree
+**`get_code_map`** — Hierarchical file tree / DIR Map
 ```
-"Show me the project structure"
-→ Returns tree of all indexed files with summaries, grouped by directory
+"Show me the project DIR map (no files)"
+→ dirs_only: true (default: false)
+→ recursive: true (default: true)
+→ Returns tree of all directories, perfect for high-level overview.
 ```
 
 **`get_dependencies`** — Dependency analysis
