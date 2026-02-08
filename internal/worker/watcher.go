@@ -906,7 +906,7 @@ func (m *Manager) InitProject() (int, error) {
 		indexed++
 
 		if indexed%50 == 0 {
-			fmt.Printf("  ... processed %d files\n", indexed)
+			fmt.Fprintf(os.Stderr, "  ... processed %d files\n", indexed)
 		}
 
 		// Save to SQLite
@@ -952,18 +952,18 @@ func (m *Manager) InitProject() (int, error) {
 	})
 
 	if err != nil {
-		fmt.Printf("  [DEBUG] Error during file walk: %v\n", err)
+		fmt.Fprintf(os.Stderr, "  [DEBUG] Error during file walk: %v\n", err)
 	}
 
 	// Perform bulk saves to JSON store—this is the primary performance win
 	if err == nil {
-		fmt.Printf("  [DEBUG] Saving bulk index for %d files...\n", indexed)
+		fmt.Fprintf(os.Stderr, "  [DEBUG] Saving bulk index for %d files...\n", indexed)
 		if saveErr := m.jsonStore.SaveFilesIndexBulk(allFiles); saveErr != nil {
-			fmt.Printf("  [WARNING] Error saving bulk file index: %v\n", saveErr)
+			fmt.Fprintf(os.Stderr, "  [WARNING] Error saving bulk file index: %v\n", saveErr)
 		}
-		fmt.Printf("  [DEBUG] Saving bulk graph for %d edges...\n", len(allEdges))
+		fmt.Fprintf(os.Stderr, "  [DEBUG] Saving bulk graph for %d edges...\n", len(allEdges))
 		if saveErr := m.jsonStore.AddEdgesBulk(allEdges); saveErr != nil {
-			fmt.Printf("  [WARNING] Error saving bulk graph edges: %v\n", saveErr)
+			fmt.Fprintf(os.Stderr, "  [WARNING] Error saving bulk graph edges: %v\n", saveErr)
 		}
 		graphEdges = len(allEdges)
 	}
