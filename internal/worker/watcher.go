@@ -1012,72 +1012,27 @@ func (m *Manager) handleDeletedFile(path string) {
 	// For now, edges will become stale but won't cause issues
 }
 
-// GenerateCodeTree creates tree.json with full directory structure and file paths
+// GenerateCodeTree creates tree.json - ULTRA COMPACT: just file count + paths
 func (m *Manager) GenerateCodeTree() error {
 	files, err := m.jsonStore.GetFilesIndex()
 	if err != nil {
 		return err
 	}
 
-	// Build nested JSON structure
-	type TreeNode struct {
-		Files    []string             `json:"files,omitempty"`
-		Children map[string]*TreeNode `json:"dirs,omitempty"`
-	}
-
-	root := &TreeNode{Children: make(map[string]*TreeNode)}
-
-	// Build file lookup map (filename -> full paths)
-	fileLookup := make(map[string][]string)
-
+	// Collect all file paths
+	paths := make([]string, 0, len(files))
 	for path := range files {
-		parts := strings.Split(filepath.Dir(path), string(filepath.Separator))
-		if len(parts) > 0 && parts[0] == "." {
-			parts = parts[1:]
-		}
-
-		// Navigate/create tree structure
-		current := root
-		for _, part := range parts {
-			if part == "" {
-				continue
-			}
-			if current.Children == nil {
-				current.Children = make(map[string]*TreeNode)
-			}
-			if current.Children[part] == nil {
-				current.Children[part] = &TreeNode{Children: make(map[string]*TreeNode)}
-			}
-			current = current.Children[part]
-		}
-
-		// Add file to leaf node
-		filename := filepath.Base(path)
-		current.Files = append(current.Files, filename)
-
-		// Add to lookup map
-		fileLookup[filename] = append(fileLookup[filename], path)
+		paths = append(paths, path)
 	}
+	sort.Strings(paths)
 
-	// Sort files in each node
-	var sortFiles func(node *TreeNode)
-	sortFiles = func(node *TreeNode) {
-		sort.Strings(node.Files)
-		for _, child := range node.Children {
-			sortFiles(child)
-		}
-	}
-	sortFiles(root)
-
-	// Create output structure
+	// Ultra compact: just count + paths array (no lookup map - search is fast enough)
 	output := map[string]interface{}{
-		"total":  len(files),
-		"tree":   root,
-		"lookup": fileLookup,
+		"n": len(files),
+		"f": paths,
 	}
 
-	// Write to JSON file
-	data, err := json.MarshalIndent(output, "", "  ")
+	data, err := json.Marshal(output)
 	if err != nil {
 		return err
 	}
@@ -1085,6 +1040,8 @@ func (m *Manager) GenerateCodeTree() error {
 	treePath := filepath.Join(m.basePath, "tree.json")
 	return os.WriteFile(treePath, data, 0644)
 }
+
+
 
 
 

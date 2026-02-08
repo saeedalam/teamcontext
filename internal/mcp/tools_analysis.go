@@ -108,44 +108,43 @@ func (s *Server) handleGetTree(params json.RawMessage) (interface{}, error) {
 		return nil, err
 	}
 
-	var tree map[string]interface{}
+	var tree struct {
+		N int                 `json:"n"` // total
+		F []string            `json:"f"` // files
+		L map[string][]string `json:"l"` // lookup
+	}
 	if err := json.Unmarshal(data, &tree); err != nil {
 		return nil, err
 	}
 
-	// If path specified, extract subtree
+	// If path specified, filter files
 	if p.Path != "" {
-		treeData := tree["tree"].(map[string]interface{})
-		parts := strings.Split(strings.Trim(p.Path, "/"), "/")
-		for _, part := range parts {
-			if part == "" {
-				continue
-			}
-			if dirs, ok := treeData["dirs"].(map[string]interface{}); ok {
-				if subtree, ok := dirs[part].(map[string]interface{}); ok {
-					treeData = subtree
-				} else {
-					return map[string]interface{}{
-						"error": fmt.Sprintf("Path not found: %s", p.Path),
-					}, nil
-				}
-			} else {
-				return map[string]interface{}{
-					"error": fmt.Sprintf("Path not found: %s", p.Path),
-				}, nil
+		prefix := strings.TrimPrefix(p.Path, "/")
+		if !strings.HasSuffix(prefix, "/") {
+			prefix += "/"
+		}
+		var filtered []string
+		for _, f := range tree.F {
+			if strings.HasPrefix(f, prefix) || strings.HasPrefix(f, strings.TrimSuffix(prefix, "/")) {
+				filtered = append(filtered, f)
 			}
 		}
 		return map[string]interface{}{
 			"path":  p.Path,
-			"tree":  treeData,
-			"total": tree["total"],
+			"files": filtered,
+			"count": len(filtered),
 		}, nil
 	}
 
-	return tree, nil
+	// Return compact tree view
+	return map[string]interface{}{
+		"total": tree.N,
+		"files": tree.F,
+	}, nil
 }
 
-// handleGetSignature finds a file by name and returns its code signature (parsed live)
+
+// handleGetSignature finds a file by name and returns its code signature (parsed live)// handleGetSignature finds a file by name and returns its code signature (parsed live)
 func (s *Server) handleGetSignature(params json.RawMessage) (interface{}, error) {
 	var p struct {
 		File string `json:"file"` // Filename or partial path
@@ -154,7 +153,7 @@ func (s *Server) handleGetSignature(params json.RawMessage) (interface{}, error)
 		return nil, fmt.Errorf("file parameter required")
 	}
 
-	// Find file using tree.json lookup
+	// Find file using tree.json
 	treePath := filepath.Join(s.basePath, "tree.json")
 	data, err := os.ReadFile(treePath)
 	if err != nil {
@@ -162,35 +161,39 @@ func (s *Server) handleGetSignature(params json.RawMessage) (interface{}, error)
 	}
 
 	var tree struct {
-		Lookup map[string][]string `json:"lookup"`
+		F []string `json:"f"` // all file paths
 	}
 	if err := json.Unmarshal(data, &tree); err != nil {
 		return nil, err
 	}
 
-	// Find matching files
+	// Search for matching files
 	var matches []string
-	if strings.Contains(p.File, "/") {
-		// Path provided - use directly
-		matches = []string{p.File}
-	} else {
-		// Filename only - lookup
-		if paths, ok := tree.Lookup[p.File]; ok {
-			matches = paths
-		} else {
-			// Fuzzy match - find files containing this name
-			for name, paths := range tree.Lookup {
-				if strings.Contains(strings.ToLower(name), strings.ToLower(p.File)) {
-					matches = append(matches, paths...)
-				}
+	searchLower := strings.ToLower(p.File)
+	
+	for _, path := range tree.F {
+		filename := filepath.Base(path)
+		if strings.Contains(p.File, "/") {
+			// Path match
+			if strings.Contains(path, p.File) {
+				matches = append(matches, path)
 			}
+		} else {
+			// Filename match (exact or partial)
+			if strings.ToLower(filename) == searchLower || 
+			   strings.Contains(strings.ToLower(filename), searchLower) {
+				matches = append(matches, path)
+			}
+		}
+		if len(matches) >= 10 {
+			break // limit search
 		}
 	}
 
 	if len(matches) == 0 {
 		return map[string]interface{}{
-			"error":   fmt.Sprintf("File not found: %s", p.File),
-			"hint":    "Use full filename or partial match",
+			"error": fmt.Sprintf("File not found: %s", p.File),
+			"hint":  "Use full filename or partial match",
 		}, nil
 	}
 
@@ -198,9 +201,10 @@ func (s *Server) handleGetSignature(params json.RawMessage) (interface{}, error)
 		return map[string]interface{}{
 			"matches": matches[:5],
 			"total":   len(matches),
-			"hint":    "Multiple matches. Be more specific or provide full path.",
+			"hint":    "Multiple matches. Be more specific.",
 		}, nil
 	}
+
 
 	// Parse each matched file live
 	results := make([]map[string]interface{}, 0, len(matches))
