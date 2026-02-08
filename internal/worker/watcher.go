@@ -988,8 +988,16 @@ func (m *Manager) InitProject() (int, error) {
 		m.logEvent("Skipping semantic index (no knowledge items yet)", nil)
 	}
 
+	// Generate compact codetree.txt for ultra-fast get_code_map
+	if err := m.GenerateCodeTree(); err != nil {
+		fmt.Fprintf(os.Stderr, "  [WARNING] Failed to generate codetree: %v\n", err)
+	} else {
+		fmt.Fprintf(os.Stderr, "  Generated codetree.txt\n")
+	}
+
 	return indexed, err
 }
+
 
 
 
@@ -1003,6 +1011,116 @@ func (m *Manager) handleDeletedFile(path string) {
 	// Note: Edge cleanup would require a DeleteEdge method
 	// For now, edges will become stale but won't cause issues
 }
+
+// GenerateCodeTree creates a compact codetree.txt file with JUST directory structure
+func (m *Manager) GenerateCodeTree() error {
+	files, err := m.jsonStore.GetFilesIndex()
+	if err != nil {
+		return err
+	}
+
+	// Build tree structure - JUST directories and file counts
+	type TreeNode struct {
+		Name      string
+		FileCount int
+		KeyFiles  []string
+		Children  map[string]*TreeNode
+	}
+
+	root := &TreeNode{Name: ".", Children: make(map[string]*TreeNode)}
+
+	// Key file patterns - only the most important entry points
+	keyFilePatterns := []string{
+		"main.ts", "main.go", "main.py", "main.rs",
+		"app.module.ts", "schema.prisma", "go.mod",
+	}
+	isKeyFile := func(filename string) bool {
+		base := filepath.Base(filename)
+		for _, pattern := range keyFilePatterns {
+			if base == pattern {
+				return true
+			}
+		}
+		return false
+	}
+
+	// Populate tree
+	for path := range files {
+		parts := strings.Split(filepath.Dir(path), string(filepath.Separator))
+		if len(parts) > 0 && parts[0] == "." {
+			parts = parts[1:]
+		}
+
+		current := root
+		for _, part := range parts {
+			if part == "" {
+				continue
+			}
+			if current.Children[part] == nil {
+				current.Children[part] = &TreeNode{Name: part, Children: make(map[string]*TreeNode)}
+			}
+			current = current.Children[part]
+		}
+
+		current.FileCount++
+		if isKeyFile(path) && len(current.KeyFiles) < 2 {
+			current.KeyFiles = append(current.KeyFiles, filepath.Base(path))
+		}
+	}
+
+	// Generate ultra-compact text output
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("# %d files\n", len(files)))
+
+	var writeTree func(node *TreeNode, prefix string, depth int)
+	writeTree = func(node *TreeNode, prefix string, depth int) {
+		if depth > 5 {
+			return
+		}
+		// Sort children
+		names := make([]string, 0, len(node.Children))
+		for name := range node.Children {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+
+		for i, name := range names {
+			child := node.Children[name]
+			isLast := i == len(names)-1
+			connector := "├─"
+			if isLast {
+				connector = "└─"
+			}
+
+			// Ultra-compact: dir/ (N) [key.ts]
+			line := fmt.Sprintf("%s%s%s/", prefix, connector, child.Name)
+			if child.FileCount > 0 {
+				line += fmt.Sprintf(" %d", child.FileCount)
+			}
+			if len(child.KeyFiles) > 0 {
+				line += " [" + strings.Join(child.KeyFiles, ",") + "]"
+			}
+			sb.WriteString(line + "\n")
+
+			// Recurse
+			newPrefix := prefix
+			if isLast {
+				newPrefix += "  "
+			} else {
+				newPrefix += "│ "
+			}
+			writeTree(child, newPrefix, depth+1)
+		}
+	}
+
+	writeTree(root, "", 0)
+
+	// Write to file
+	treePath := filepath.Join(m.basePath, "codetree.txt")
+	return os.WriteFile(treePath, []byte(sb.String()), 0644)
+}
+
+
 
 // autoIndexNewFile creates a full index entry for a new file and saves it
 func (m *Manager) autoIndexNewFile(path string) error {

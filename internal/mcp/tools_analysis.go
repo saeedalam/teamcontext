@@ -90,173 +90,25 @@ func (s *Server) handleScanImports(params json.RawMessage) (interface{}, error) 
 }
 
 func (s *Server) handleGetCodeMap(params json.RawMessage) (interface{}, error) {
-	var p struct {
-		Path     string `json:"path"`
-		MaxDepth int    `json:"max_depth"`
-		Compact  bool   `json:"compact"` // Default true - show counts only, not all files
-	}
-	json.Unmarshal(params, &p)
-
-	// Defaults
-	if p.MaxDepth <= 0 {
-		p.MaxDepth = 4
-	}
-	if p.MaxDepth > 10 {
-		p.MaxDepth = 10
-	}
-
-	files, err := s.jsonStore.GetFilesIndex()
+	// Read pre-computed codetree.txt (generated during init/index)
+	treePath := filepath.Join(s.basePath, "codetree.txt")
+	data, err := os.ReadFile(treePath)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return map[string]interface{}{
+				"error": "Code tree not generated yet. Run 'teamcontext index' first.",
+				"hint":  "The code tree is pre-computed during indexing for ultra-fast access.",
+			}, nil
+		}
 		return nil, err
 	}
 
-	// Key files - entry points that are always shown
-	keyFilePatterns := []string{
-		"index.ts", "index.tsx", "index.js", "main.ts", "main.go", "main.py",
-		"app.ts", "app.module.ts", "app.tsx", "App.tsx",
-		"mod.rs", "lib.rs", "main.rs",
-		"schema.prisma", "package.json", "tsconfig.json", "go.mod",
-		"Dockerfile", "docker-compose.yml", "docker-compose.yaml",
-	}
-	isKeyFile := func(filename string) bool {
-		for _, pattern := range keyFilePatterns {
-			if strings.HasSuffix(filename, pattern) || filepath.Base(filename) == pattern {
-				return true
-			}
-		}
-		return false
-	}
-
-	// Build tree structure
-	type TreeNode struct {
-		Name      string               `json:"name"`
-		Path      string               `json:"path,omitempty"`
-		FileCount int                  `json:"files,omitempty"`
-		KeyFiles  []string             `json:"key_files,omitempty"`
-		Children  map[string]*TreeNode `json:"-"` // internal use
-		ChildList []*TreeNode          `json:"children,omitempty"`
-	}
-
-	root := &TreeNode{Name: ".", Children: make(map[string]*TreeNode)}
-
-	basePath := p.Path
-	if basePath == "" {
-		basePath = "."
-	}
-
-	totalFiles := 0
-	for path, file := range files {
-		// Filter by base path
-		if p.Path != "" && !strings.HasPrefix(path, p.Path) {
-			continue
-		}
-		totalFiles++
-
-		relPath := path
-		if p.Path != "" {
-			relPath = strings.TrimPrefix(path, p.Path)
-			relPath = strings.TrimPrefix(relPath, "/")
-		}
-
-		parts := strings.Split(filepath.Dir(relPath), string(filepath.Separator))
-		if parts[0] == "." {
-			parts = parts[1:]
-		}
-
-		// Check depth
-		if len(parts) > p.MaxDepth {
-			parts = parts[:p.MaxDepth]
-		}
-
-		// Walk/create tree nodes
-		current := root
-		for _, part := range parts {
-			if part == "" {
-				continue
-			}
-			if current.Children[part] == nil {
-				current.Children[part] = &TreeNode{
-					Name:     part,
-					Children: make(map[string]*TreeNode),
-				}
-			}
-			current = current.Children[part]
-		}
-
-		// Count file and track key files
-		current.FileCount++
-		if isKeyFile(path) && len(current.KeyFiles) < 5 {
-			current.KeyFiles = append(current.KeyFiles, filepath.Base(path))
-		}
-
-		// Store language info in root for summary
-		_ = file.Language // used for counting
-	}
-
-	// Convert children map to sorted list (recursive)
-	var convertChildren func(node *TreeNode) 
-	convertChildren = func(node *TreeNode) {
-		if len(node.Children) == 0 {
-			return
-		}
-		names := make([]string, 0, len(node.Children))
-		for name := range node.Children {
-			names = append(names, name)
-		}
-		sort.Strings(names)
-		for _, name := range names {
-			child := node.Children[name]
-			convertChildren(child)
-			node.ChildList = append(node.ChildList, child)
-		}
-		node.Children = nil // clear internal map
-	}
-	convertChildren(root)
-
-	// Build compact text representation (much smaller than JSON)
-	var sb strings.Builder
-	var writeTree func(node *TreeNode, prefix string, depth int)
-	writeTree = func(node *TreeNode, prefix string, depth int) {
-		if depth > p.MaxDepth {
-			return
-		}
-		for i, child := range node.ChildList {
-			isLast := i == len(node.ChildList)-1
-			connector := "├── "
-			if isLast {
-				connector = "└── "
-			}
-
-			// Directory line with file count
-			line := fmt.Sprintf("%s%s%s/", prefix, connector, child.Name)
-			if child.FileCount > 0 {
-				line += fmt.Sprintf(" (%d files)", child.FileCount)
-			}
-			if len(child.KeyFiles) > 0 {
-				line += fmt.Sprintf(" [%s]", strings.Join(child.KeyFiles, ", "))
-			}
-			sb.WriteString(line + "\n")
-
-			// Recurse
-			newPrefix := prefix
-			if isLast {
-				newPrefix += "    "
-			} else {
-				newPrefix += "│   "
-			}
-			writeTree(child, newPrefix, depth+1)
-		}
-	}
-	sb.WriteString(basePath + "/\n")
-	writeTree(root, "", 0)
-
 	return map[string]interface{}{
-		"tree":        sb.String(),
-		"total_files": totalFiles,
-		"max_depth":   p.MaxDepth,
-		"note":        "Use 'path' to zoom into a subdirectory. Use 'max_depth' to go deeper. Key files (entry points) shown in brackets.",
+		"tree": string(data),
+		"note": "Pre-computed during index. Run 'teamcontext index' to refresh.",
 	}, nil
 }
+
 
 
 func (s *Server) handleGetDependencies(params json.RawMessage) (interface{}, error) {
