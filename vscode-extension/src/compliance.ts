@@ -1,10 +1,10 @@
 import * as vscode from 'vscode';
-import { TeamBrainClient } from './client';
+import { TeamContextClient } from './client';
 
-const diagnosticCollection = vscode.languages.createDiagnosticCollection('teambrain');
+const diagnosticCollection = vscode.languages.createDiagnosticCollection('teamcontext');
 
 export class ComplianceChecker {
-    constructor(private client: TeamBrainClient) {}
+    constructor(private client: TeamContextClient) {}
 
     async checkFile(filePath: string): Promise<void> {
         try {
@@ -26,10 +26,10 @@ export class ComplianceChecker {
                     const range = new vscode.Range(line, 0, line, 200);
                     const diagnostic = new vscode.Diagnostic(
                         range,
-                        `[TeamBrain] ${v.message} (ref: ${v.reference || 'N/A'})`,
+                        `[TeamContext] ${v.message} (ref: ${v.reference || 'N/A'})`,
                         severity
                     );
-                    diagnostic.source = 'TeamBrain';
+                    diagnostic.source = 'TeamContext';
                     diagnostics.push(diagnostic);
                 }
             }

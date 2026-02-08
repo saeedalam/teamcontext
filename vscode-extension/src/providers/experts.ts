@@ -1,12 +1,12 @@
 import * as vscode from 'vscode';
-import { TeamBrainClient } from '../client';
+import { TeamContextClient } from '../client';
 
 export class ExpertsProvider implements vscode.TreeDataProvider<ExpertItem> {
     private _onDidChangeTreeData = new vscode.EventEmitter<ExpertItem | undefined>();
     readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
     private currentFile: string | undefined;
 
-    constructor(private client: TeamBrainClient) {}
+    constructor(private client: TeamContextClient) {}
 
     refresh(): void {
         this._onDidChangeTreeData.fire(undefined);

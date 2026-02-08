@@ -1,11 +1,11 @@
 import * as vscode from 'vscode';
-import { TeamBrainClient } from '../client';
+import { TeamContextClient } from '../client';
 
 export class RisksProvider implements vscode.TreeDataProvider<RiskItem> {
     private _onDidChangeTreeData = new vscode.EventEmitter<RiskItem | undefined>();
     readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
-    constructor(private client: TeamBrainClient) {}
+    constructor(private client: TeamContextClient) {}
 
     refresh(): void {
         this._onDidChangeTreeData.fire(undefined);
@@ -33,7 +33,7 @@ export class RisksProvider implements vscode.TreeDataProvider<RiskItem> {
                 return item;
             });
         } catch {
-            return [new RiskItem('Unable to load risks', 'Check teambrain is running', vscode.TreeItemCollapsibleState.None)];
+            return [new RiskItem('Unable to load risks', 'Check teamcontext is running', vscode.TreeItemCollapsibleState.None)];
         }
     }
 }

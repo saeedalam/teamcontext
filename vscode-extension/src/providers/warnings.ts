@@ -1,11 +1,11 @@
 import * as vscode from 'vscode';
-import { TeamBrainClient } from '../client';
+import { TeamContextClient } from '../client';
 
 export class WarningsProvider implements vscode.TreeDataProvider<WarningItem> {
     private _onDidChangeTreeData = new vscode.EventEmitter<WarningItem | undefined>();
     readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
-    constructor(private client: TeamBrainClient) {}
+    constructor(private client: TeamContextClient) {}
 
     refresh(): void {
         this._onDidChangeTreeData.fire(undefined);

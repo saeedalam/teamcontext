@@ -1,11 +1,11 @@
 import * as vscode from 'vscode';
-import { TeamBrainClient } from '../client';
+import { TeamContextClient } from '../client';
 
 export class FeedProvider implements vscode.TreeDataProvider<FeedItem> {
     private _onDidChangeTreeData = new vscode.EventEmitter<FeedItem | undefined>();
     readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
-    constructor(private client: TeamBrainClient) {}
+    constructor(private client: TeamContextClient) {}
 
     refresh(): void {
         this._onDidChangeTreeData.fire(undefined);
@@ -35,7 +35,7 @@ export class FeedProvider implements vscode.TreeDataProvider<FeedItem> {
                 return item;
             });
         } catch {
-            return [new FeedItem('Unable to load feed', 'Check teambrain is running', vscode.TreeItemCollapsibleState.None)];
+            return [new FeedItem('Unable to load feed', 'Check teamcontext is running', vscode.TreeItemCollapsibleState.None)];
         }
     }
 

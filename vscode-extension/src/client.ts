@@ -3,10 +3,10 @@ import * as path from 'path';
 import * as fs from 'fs';
 
 /**
- * TeamBrainClient communicates with the teambrain binary via JSON-RPC over stdio.
+ * TeamContextClient communicates with the teamcontext binary via JSON-RPC over stdio.
  * It spawns the MCP server as a child process and sends tool calls.
  */
-export class TeamBrainClient {
+export class TeamContextClient {
     private process: cp.ChildProcess | null = null;
     private requestId = 0;
     private pendingRequests = new Map<number, { resolve: (v: any) => void; reject: (e: any) => void }>();
@@ -21,7 +21,7 @@ export class TeamBrainClient {
 
         const binaryPath = this.findBinary();
         if (!binaryPath) {
-            throw new Error('teambrain binary not found in PATH');
+            throw new Error('teamcontext binary not found in PATH');
         }
 
         this.process = cp.spawn(binaryPath, ['serve', this.workspaceRoot], {
@@ -45,7 +45,7 @@ export class TeamBrainClient {
             params: {
                 protocolVersion: '2024-11-05',
                 capabilities: {},
-                clientInfo: { name: 'vscode-teambrain', version: '0.1.0' },
+                clientInfo: { name: 'vscode-teamcontext', version: '0.1.0' },
             },
         });
 
@@ -119,9 +119,9 @@ export class TeamBrainClient {
     private findBinary(): string | null {
         // Check common locations
         const locations = [
-            'teambrain', // In PATH
-            path.join(process.env.HOME || '', 'go', 'bin', 'teambrain'),
-            '/usr/local/bin/teambrain',
+            'teamcontext', // In PATH
+            path.join(process.env.HOME || '', 'go', 'bin', 'teamcontext'),
+            '/usr/local/bin/teamcontext',
         ];
 
         for (const loc of locations) {
@@ -135,7 +135,7 @@ export class TeamBrainClient {
 
         // Try which
         try {
-            return cp.execSync('which teambrain').toString().trim();
+            return cp.execSync('which teamcontext').toString().trim();
         } catch {
             return null;
         }

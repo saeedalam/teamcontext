@@ -4,10 +4,10 @@ import { DecisionsProvider } from './providers/decisions';
 import { WarningsProvider } from './providers/warnings';
 import { ExpertsProvider } from './providers/experts';
 import { FeedProvider } from './providers/feed';
-import { TeamBrainClient } from './client';
+import { TeamContextClient } from './client';
 import { ComplianceChecker } from './compliance';
 
-let client: TeamBrainClient;
+let client: TeamContextClient;
 
 export function activate(context: vscode.ExtensionContext) {
     const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
@@ -15,7 +15,7 @@ export function activate(context: vscode.ExtensionContext) {
         return;
     }
 
-    client = new TeamBrainClient(workspaceRoot);
+    client = new TeamContextClient(workspaceRoot);
 
     // Register tree data providers
     const risksProvider = new RisksProvider(client);
@@ -24,39 +24,39 @@ export function activate(context: vscode.ExtensionContext) {
     const expertsProvider = new ExpertsProvider(client);
     const feedProvider = new FeedProvider(client);
 
-    vscode.window.registerTreeDataProvider('teambrain.risks', risksProvider);
-    vscode.window.registerTreeDataProvider('teambrain.decisions', decisionsProvider);
-    vscode.window.registerTreeDataProvider('teambrain.warnings', warningsProvider);
-    vscode.window.registerTreeDataProvider('teambrain.experts', expertsProvider);
-    vscode.window.registerTreeDataProvider('teambrain.feed', feedProvider);
+    vscode.window.registerTreeDataProvider('teamcontext.risks', risksProvider);
+    vscode.window.registerTreeDataProvider('teamcontext.decisions', decisionsProvider);
+    vscode.window.registerTreeDataProvider('teamcontext.warnings', warningsProvider);
+    vscode.window.registerTreeDataProvider('teamcontext.experts', expertsProvider);
+    vscode.window.registerTreeDataProvider('teamcontext.feed', feedProvider);
 
     // Register commands
     context.subscriptions.push(
-        vscode.commands.registerCommand('teambrain.refresh', () => {
+        vscode.commands.registerCommand('teamcontext.refresh', () => {
             risksProvider.refresh();
             decisionsProvider.refresh();
             warningsProvider.refresh();
             expertsProvider.refresh();
             feedProvider.refresh();
         }),
-        vscode.commands.registerCommand('teambrain.checkCompliance', () => {
+        vscode.commands.registerCommand('teamcontext.checkCompliance', () => {
             const editor = vscode.window.activeTextEditor;
             if (editor) {
                 new ComplianceChecker(client).checkFile(editor.document.uri.fsPath);
             }
         }),
-        vscode.commands.registerCommand('teambrain.showExperts', () => {
+        vscode.commands.registerCommand('teamcontext.showExperts', () => {
             const editor = vscode.window.activeTextEditor;
             if (editor) {
                 expertsProvider.showForFile(editor.document.uri.fsPath);
             }
         }),
-        vscode.commands.registerCommand('teambrain.sync', async () => {
-            const terminal = vscode.window.createTerminal('TeamBrain Sync');
-            terminal.sendText('teambrain sync');
+        vscode.commands.registerCommand('teamcontext.sync', async () => {
+            const terminal = vscode.window.createTerminal('TeamContext Sync');
+            terminal.sendText('teamcontext sync');
             terminal.show();
         }),
-        vscode.commands.registerCommand('teambrain.feed', () => {
+        vscode.commands.registerCommand('teamcontext.feed', () => {
             feedProvider.refresh();
         })
     );
@@ -68,7 +68,7 @@ export function activate(context: vscode.ExtensionContext) {
         })
     );
 
-    vscode.window.showInformationMessage('TeamBrain activated');
+    vscode.window.showInformationMessage('TeamContext activated');
 }
 
 export function deactivate() {
