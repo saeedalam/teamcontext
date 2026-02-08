@@ -45,9 +45,9 @@ changelog:
 brews:
   - name: teamcontext
     repository:
-      owner: teamcontext
+      owner: saeedalam
       name: homebrew-tap
-    homepage: https://github.com/teamcontext/teamcontext
+    homepage: https://github.com/saeedalam/teamcontext
     description: "The Technical Memory That Outlives Everyone"
     license: MIT
     install: |
