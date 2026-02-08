@@ -91,33 +91,18 @@ func (s *Server) handleScanImports(params json.RawMessage) (interface{}, error) 
 
 func (s *Server) handleGetCodeMap(params json.RawMessage) (interface{}, error) {
 	var p struct {
-		Path        string `json:"path"`
-		Language    string `json:"language"`
-		MaxDepth    int    `json:"max_depth"`
-		Limit       int    `json:"limit"`
-		Recursive   *bool   `json:"recursive"`    // Use pointer to detect presence
-		DirsOnly    bool   `json:"dirs_only"`
+		Path     string `json:"path"`
+		MaxDepth int    `json:"max_depth"`
+		Compact  bool   `json:"compact"` // Default true - show counts only, not all files
 	}
 	json.Unmarshal(params, &p)
 
-	// Default values
-	recursive := true
-	if p.Recursive != nil {
-		recursive = *p.Recursive
-	}
-
-	// Default limits to prevent massive outputs
+	// Defaults
 	if p.MaxDepth <= 0 {
-		p.MaxDepth = 3 // Default to 3 levels deep
+		p.MaxDepth = 4
 	}
 	if p.MaxDepth > 10 {
 		p.MaxDepth = 10
-	}
-	if p.Limit <= 0 {
-		p.Limit = 100 // Default to 100 files
-	}
-	if p.Limit > 1000 {
-		p.Limit = 1000
 	}
 
 	files, err := s.jsonStore.GetFilesIndex()
@@ -125,117 +110,154 @@ func (s *Server) handleGetCodeMap(params json.RawMessage) (interface{}, error) {
 		return nil, err
 	}
 
-	// SIMPLER APPROACH: Return flat list grouped by directory instead of nested tree
-	// This avoids JSON serialization issues with complex pointer structures
-	type FileEntry struct {
-		Path     string `json:"path"`
-		Language string `json:"language"`
-		Exports  int    `json:"exports"`
+	// Key files - entry points that are always shown
+	keyFilePatterns := []string{
+		"index.ts", "index.tsx", "index.js", "main.ts", "main.go", "main.py",
+		"app.ts", "app.module.ts", "app.tsx", "App.tsx",
+		"mod.rs", "lib.rs", "main.rs",
+		"schema.prisma", "package.json", "tsconfig.json", "go.mod",
+		"Dockerfile", "docker-compose.yml", "docker-compose.yaml",
+	}
+	isKeyFile := func(filename string) bool {
+		for _, pattern := range keyFilePatterns {
+			if strings.HasSuffix(filename, pattern) || filepath.Base(filename) == pattern {
+				return true
+			}
+		}
+		return false
 	}
 
-	dirMap := make(map[string][]FileEntry)
-	fileCount := 0
-	totalMatched := 0
+	// Build tree structure
+	type TreeNode struct {
+		Name      string               `json:"name"`
+		Path      string               `json:"path,omitempty"`
+		FileCount int                  `json:"files,omitempty"`
+		KeyFiles  []string             `json:"key_files,omitempty"`
+		Children  map[string]*TreeNode `json:"-"` // internal use
+		ChildList []*TreeNode          `json:"children,omitempty"`
+	}
+
+	root := &TreeNode{Name: ".", Children: make(map[string]*TreeNode)}
+
 	basePath := p.Path
 	if basePath == "" {
 		basePath = "."
 	}
 
-	// Collect files into directories
+	totalFiles := 0
 	for path, file := range files {
-		// Apply filters
+		// Filter by base path
 		if p.Path != "" && !strings.HasPrefix(path, p.Path) {
 			continue
 		}
-		if p.Language != "" && !strings.EqualFold(file.Language, p.Language) {
-			continue
-		}
+		totalFiles++
 
-		totalMatched++
-
-		// Check depth relative to base path
 		relPath := path
 		if p.Path != "" {
 			relPath = strings.TrimPrefix(path, p.Path)
 			relPath = strings.TrimPrefix(relPath, "/")
 		}
 
-		depth := strings.Count(relPath, string(filepath.Separator))
-		if !recursive && depth > 0 {
-			continue
+		parts := strings.Split(filepath.Dir(relPath), string(filepath.Separator))
+		if parts[0] == "." {
+			parts = parts[1:]
 		}
+
+		// Check depth
+		if len(parts) > p.MaxDepth {
+			parts = parts[:p.MaxDepth]
+		}
+
+		// Walk/create tree nodes
+		current := root
+		for _, part := range parts {
+			if part == "" {
+				continue
+			}
+			if current.Children[part] == nil {
+				current.Children[part] = &TreeNode{
+					Name:     part,
+					Children: make(map[string]*TreeNode),
+				}
+			}
+			current = current.Children[part]
+		}
+
+		// Count file and track key files
+		current.FileCount++
+		if isKeyFile(path) && len(current.KeyFiles) < 5 {
+			current.KeyFiles = append(current.KeyFiles, filepath.Base(path))
+		}
+
+		// Store language info in root for summary
+		_ = file.Language // used for counting
+	}
+
+	// Convert children map to sorted list (recursive)
+	var convertChildren func(node *TreeNode) 
+	convertChildren = func(node *TreeNode) {
+		if len(node.Children) == 0 {
+			return
+		}
+		names := make([]string, 0, len(node.Children))
+		for name := range node.Children {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			child := node.Children[name]
+			convertChildren(child)
+			node.ChildList = append(node.ChildList, child)
+		}
+		node.Children = nil // clear internal map
+	}
+	convertChildren(root)
+
+	// Build compact text representation (much smaller than JSON)
+	var sb strings.Builder
+	var writeTree func(node *TreeNode, prefix string, depth int)
+	writeTree = func(node *TreeNode, prefix string, depth int) {
 		if depth > p.MaxDepth {
-			continue
+			return
 		}
-
-		if p.DirsOnly {
-			dir := filepath.Dir(path)
-			if dir == "" || dir == "." {
-				dir = "(root)"
+		for i, child := range node.ChildList {
+			isLast := i == len(node.ChildList)-1
+			connector := "├── "
+			if isLast {
+				connector = "└── "
 			}
-			if _, exists := dirMap[dir]; !exists {
-				dirMap[dir] = []FileEntry{} // Keep directory but don't add files
-				fileCount++
+
+			// Directory line with file count
+			line := fmt.Sprintf("%s%s%s/", prefix, connector, child.Name)
+			if child.FileCount > 0 {
+				line += fmt.Sprintf(" (%d files)", child.FileCount)
 			}
-			continue
+			if len(child.KeyFiles) > 0 {
+				line += fmt.Sprintf(" [%s]", strings.Join(child.KeyFiles, ", "))
+			}
+			sb.WriteString(line + "\n")
+
+			// Recurse
+			newPrefix := prefix
+			if isLast {
+				newPrefix += "    "
+			} else {
+				newPrefix += "│   "
+			}
+			writeTree(child, newPrefix, depth+1)
 		}
-
-		// Check limit
-		if fileCount >= p.Limit {
-			continue
-		}
-		fileCount++
-
-		dir := filepath.Dir(path)
-		if dir == "" || dir == "." {
-			dir = "(root)"
-		}
-		dirMap[dir] = append(dirMap[dir], FileEntry{
-			Path:     path,
-			Language: file.Language,
-			Exports:  len(file.Exports),
-		})
 	}
-
-	// Sort directories and files within each directory
-	sortedDirs := make([]string, 0, len(dirMap))
-	for dir := range dirMap {
-		sortedDirs = append(sortedDirs, dir)
-	}
-	sort.Strings(sortedDirs)
-
-	// Build output structure
-	type DirGroup struct {
-		Directory string      `json:"directory"`
-		Files     []FileEntry `json:"files"`
-		Count     int         `json:"count"`
-	}
-
-	directories := make([]DirGroup, 0, len(sortedDirs))
-	for _, dir := range sortedDirs {
-		files := dirMap[dir]
-		sort.Slice(files, func(i, j int) bool {
-			return files[i].Path < files[j].Path
-		})
-		directories = append(directories, DirGroup{
-			Directory: dir,
-			Files:     files,
-			Count:     len(files),
-		})
-	}
+	sb.WriteString(basePath + "/\n")
+	writeTree(root, "", 0)
 
 	return map[string]interface{}{
-		"base_path":     basePath,
-		"directories":   directories,
-		"dir_count":     len(directories),
-		"files_shown":   fileCount,
-		"total_matched": totalMatched,
-		"total_files":   len(files),
-		"truncated":     fileCount < totalMatched,
-		"max_depth":     p.MaxDepth,
-		"note":          "Use 'path' parameter to zoom into specific directories. Use 'max_depth' to control tree depth. Use 'limit' to show more files.",
+		"tree":        sb.String(),
+		"total_files": totalFiles,
+		"max_depth":   p.MaxDepth,
+		"note":        "Use 'path' to zoom into a subdirectory. Use 'max_depth' to go deeper. Key files (entry points) shown in brackets.",
 	}, nil
 }
+
 
 func (s *Server) handleGetDependencies(params json.RawMessage) (interface{}, error) {
 	var p struct {
