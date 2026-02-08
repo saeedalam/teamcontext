@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/spf13/cobra"
 	"github.com/saeedalam/teamcontext/internal/mcp"
+	"github.com/spf13/cobra"
 )
 
 var serveDir string
@@ -35,6 +35,7 @@ Examples:
 }
 
 func init() {
+	println("[DEBUG] cli/serve.go: init")
 	serveCmd.Flags().StringVarP(&serveDir, "dir", "d", "", "Project directory containing .teamcontext")
 }
 

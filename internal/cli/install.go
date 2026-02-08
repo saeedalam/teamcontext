@@ -70,6 +70,7 @@ var claudeCLIConfig = IDEConfig{
 }
 
 func init() {
+	println("[DEBUG] cli/install.go: init 1")
 	supportedIDEs["claudecode"] = claudeCLIConfig
 }
 
@@ -122,6 +123,7 @@ Examples:
 }
 
 func init() {
+	println("[DEBUG] cli/install.go: init 2")
 	installCmd.Flags().BoolVarP(&installGlobal, "global", "g", false, "Install to global config instead of project-level")
 	uninstallCmd.Flags().BoolVarP(&uninstallGlobal, "global", "g", false, "Remove from global config instead of project-level")
 	rootCmd.AddCommand(installCmd)

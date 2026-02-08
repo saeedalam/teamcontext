@@ -1,0 +1,60 @@
+[DEBUG] cli/init.go: init
+[DEBUG] cli/install.go: init 1
+[DEBUG] cli/install.go: init 2
+[DEBUG] cli/root.go: init
+[DEBUG] cli/serve.go: init
+[DEBUG] main: starting...
+[DEBUG] cli.Execute: entering...
+TeamContext - Your Company's Technical Memory
+
+TeamContext captures, preserves, and serves everything your team learns about
+your codebase, architecture, and development history. It's the knowledge
+layer that sits UNDER all AI tools.
+
+Key Features:
+  - Knowledge Graph: Connected decisions, warnings, patterns, files
+  - Feature Contexts: Working memory with full lifecycle
+  - Evolution Timeline: Track how knowledge changes over time
+  - MCP Protocol: Works with any MCP-compatible AI tool
+
+TeamContext does NOT think - the IDE agent (Claude, Cursor) does all intelligence.
+
+Quick Start:
+  teamcontext init          Initialize in current directory
+  teamcontext serve         Start MCP server for IDE integration
+  teamcontext start <name>  Start a new feature context
+  teamcontext status        Show current status
+
+Usage:
+  teamcontext [command]
+
+Available Commands:
+  analyze-commit  Analyze the latest commit for knowledge extraction
+  archive         Archive a completed feature
+  completion      Generate the autocompletion script for the specified shell
+  feed            Show recent team knowledge activity
+  generate-rules  Generate IDE agent rules from project knowledge
+  help            Help about any command
+  index           Index or re-index project files
+  init            Initialize TeamContext in current directory
+  install         Install TeamContext for an IDE
+  install-hooks   Install git hooks for automatic knowledge capture
+  list            List all features
+  rebuild         Rebuild SQLite index from JSON files
+  recall          Recall an archived feature
+  reindex         Re-index the codebase while preserving knowledge
+  resume          Resume an existing feature context
+  search          Search knowledge base
+  serve           Start MCP server for IDE integration
+  start           Start a new feature context
+  stats           Show detailed statistics
+  status          Show current TeamContext status
+  sync            Sync team knowledge via git
+  uninstall       Remove TeamContext from an IDE
+  uninstall-hooks Remove TeamContext git hooks
+  version         Print the version of TeamContext
+
+Flags:
+  -h, --help   help for teamcontext
+
+Use "teamcontext [command] --help" for more information about a command.

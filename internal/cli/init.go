@@ -42,6 +42,7 @@ Example:
 }
 
 func init() {
+	println("[DEBUG] cli/init.go: init")
 	initCmd.Flags().StringVarP(&projectName, "name", "n", "", "Project name")
 	initCmd.Flags().BoolVar(&skipIDESetup, "skip-ide", false, "Skip automatic IDE configuration")
 	initCmd.Flags().BoolVar(&skipIndexing, "skip-indexing", false, "Skip initial code indexing")
