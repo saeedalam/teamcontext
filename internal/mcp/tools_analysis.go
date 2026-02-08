@@ -89,15 +89,15 @@ func (s *Server) handleScanImports(params json.RawMessage) (interface{}, error) 
 	}, nil
 }
 
-// handleGetTree returns project structure from pre-computed tree.json
+// handleGetTree returns project structure from pre-computed tree.yaml
 func (s *Server) handleGetTree(params json.RawMessage) (interface{}, error) {
 	var p struct {
 		Path string `json:"path"` // Optional: filter to subtree
 	}
 	json.Unmarshal(params, &p)
 
-	// Read tree.json
-	treePath := filepath.Join(s.basePath, "tree.json")
+	// Read tree.yaml
+	treePath := filepath.Join(s.basePath, "tree.yaml")
 	data, err := os.ReadFile(treePath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -108,43 +108,17 @@ func (s *Server) handleGetTree(params json.RawMessage) (interface{}, error) {
 		return nil, err
 	}
 
-	var tree struct {
-		N int                 `json:"n"` // total
-		F []string            `json:"f"` // files
-		L map[string][]string `json:"l"` // lookup
-	}
-	if err := json.Unmarshal(data, &tree); err != nil {
-		return nil, err
-	}
-
-	// If path specified, filter files
-	if p.Path != "" {
-		prefix := strings.TrimPrefix(p.Path, "/")
-		if !strings.HasSuffix(prefix, "/") {
-			prefix += "/"
-		}
-		var filtered []string
-		for _, f := range tree.F {
-			if strings.HasPrefix(f, prefix) || strings.HasPrefix(f, strings.TrimSuffix(prefix, "/")) {
-				filtered = append(filtered, f)
-			}
-		}
-		return map[string]interface{}{
-			"path":  p.Path,
-			"files": filtered,
-			"count": len(filtered),
-		}, nil
-	}
-
-	// Return compact tree view
+	// Just return the raw YAML string - it's already ultra compact
+	// If path is specified, we would ideally filter it, but for now simple is better.
 	return map[string]interface{}{
-		"total": tree.N,
-		"files": tree.F,
+		"tree": string(data),
+		"note": "Pre-computed YAML tree. Use path filtering in your query for targeted results.",
 	}, nil
 }
 
 
-// handleGetSignature finds a file by name and returns its code signature (parsed live)// handleGetSignature finds a file by name and returns its code signature (parsed live)
+
+// handleGetSignature finds a file by name and returns its code signature (parsed live)
 func (s *Server) handleGetSignature(params json.RawMessage) (interface{}, error) {
 	var p struct {
 		File string `json:"file"` // Filename or partial path
@@ -153,25 +127,17 @@ func (s *Server) handleGetSignature(params json.RawMessage) (interface{}, error)
 		return nil, fmt.Errorf("file parameter required")
 	}
 
-	// Find file using tree.json
-	treePath := filepath.Join(s.basePath, "tree.json")
-	data, err := os.ReadFile(treePath)
+	// Use fast map lookup from files index
+	files, err := s.jsonStore.GetFilesIndex()
 	if err != nil {
-		return nil, fmt.Errorf("tree.json not found - run 'teamcontext index'")
-	}
-
-	var tree struct {
-		F []string `json:"f"` // all file paths
-	}
-	if err := json.Unmarshal(data, &tree); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("files index not found - run 'teamcontext index'")
 	}
 
 	// Search for matching files
 	var matches []string
 	searchLower := strings.ToLower(p.File)
 	
-	for _, path := range tree.F {
+	for path := range files {
 		filename := filepath.Base(path)
 		if strings.Contains(p.File, "/") {
 			// Path match

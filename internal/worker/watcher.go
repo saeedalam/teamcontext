@@ -992,7 +992,7 @@ func (m *Manager) InitProject() (int, error) {
 	if err := m.GenerateCodeTree(); err != nil {
 		fmt.Fprintf(os.Stderr, "  [WARNING] Failed to generate codetree: %v\n", err)
 	} else {
-		fmt.Fprintf(os.Stderr, "  Generated tree.json\n")
+		fmt.Fprintf(os.Stderr, "  Generated tree.yaml\n")
 	}
 
 	return indexed, err
@@ -1012,34 +1012,73 @@ func (m *Manager) handleDeletedFile(path string) {
 	// For now, edges will become stale but won't cause issues
 }
 
-// GenerateCodeTree creates tree.json - ULTRA COMPACT: just file count + paths
+// GenerateCodeTree creates tree.yaml - ULTRA COMPACT YAML format
 func (m *Manager) GenerateCodeTree() error {
 	files, err := m.jsonStore.GetFilesIndex()
 	if err != nil {
 		return err
 	}
 
-	// Collect all file paths
-	paths := make([]string, 0, len(files))
+	// Build nested structure
+	type Node struct {
+		Dirs  map[string]*Node
+		Files []string
+	}
+	root := &Node{Dirs: make(map[string]*Node)}
+
 	for path := range files {
-		paths = append(paths, path)
-	}
-	sort.Strings(paths)
+		parts := strings.Split(filepath.Dir(path), string(filepath.Separator))
+		if len(parts) > 0 && parts[0] == "." {
+			parts = parts[1:]
+		}
 
-	// Ultra compact: just count + paths array (no lookup map - search is fast enough)
-	output := map[string]interface{}{
-		"n": len(files),
-		"f": paths,
+		curr := root
+		for _, part := range parts {
+			if part == "" {
+				continue
+			}
+			if curr.Dirs[part] == nil {
+				curr.Dirs[part] = &Node{Dirs: make(map[string]*Node)}
+			}
+			curr = curr.Dirs[part]
+		}
+		curr.Files = append(curr.Files, filepath.Base(path))
 	}
 
-	data, err := json.Marshal(output)
-	if err != nil {
-		return err
+	// Generate YAML string recursively
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "total: %d\n", len(files))
+	fmt.Fprintf(&sb, "tree:\n")
+
+	var writeNode func(n *Node, indent int)
+	writeNode = func(n *Node, indent int) {
+		spaces := strings.Repeat("  ", indent)
+		
+		// Sort dirs for stability
+		dirs := make([]string, 0, len(n.Dirs))
+		for d := range n.Dirs {
+			dirs = append(dirs, d)
+		}
+		sort.Strings(dirs)
+
+		for _, d := range dirs {
+			fmt.Fprintf(&sb, "%s%s:\n", spaces, d)
+			writeNode(n.Dirs[d], indent+1)
+		}
+
+		// Sort files for stability
+		sort.Strings(n.Files)
+		for _, f := range n.Files {
+			fmt.Fprintf(&sb, "%s- %s\n", spaces, f)
+		}
 	}
 
-	treePath := filepath.Join(m.basePath, "tree.json")
-	return os.WriteFile(treePath, data, 0644)
+	writeNode(root, 1)
+
+	treePath := filepath.Join(m.basePath, "tree.yaml")
+	return os.WriteFile(treePath, []byte(sb.String()), 0644)
 }
+
 
 
 

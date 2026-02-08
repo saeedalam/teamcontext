@@ -87,6 +87,23 @@ func (s *JSONStore) GetFilesIndex() (map[string]types.FileIndex, error) {
 	return *result, nil
 }
 
+// pruneFileIndex removes metadata that isn't strictly needed for the search/tool context
+// This saves massive amounts of tokens and space
+func (s *JSONStore) pruneFileIndex(file *types.FileIndex) {
+	file.Summary = ""     // Placeholder not used yet
+	file.Patterns = nil    // Not used by MCP yet
+	file.RelatedFiles = nil
+	file.ContentHash = ""
+	file.SizeBytes = 0
+	file.LineCount = 0
+	file.IndexedAt = time.Time{}
+
+	// Slim down Exports - only need name and kind for signature detection
+	for i := range file.Exports {
+		file.Exports[i].Line = 0
+	}
+}
+
 func (s *JSONStore) SaveFileIndex(file *types.FileIndex) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -102,7 +119,7 @@ func (s *JSONStore) SaveFileIndex(file *types.FileIndex) error {
 		files = &m
 	}
 
-	file.IndexedAt = time.Now()
+	s.pruneFileIndex(file)
 	(*files)[file.Path] = *file
 
 	return writeJSON(path, files)
@@ -111,6 +128,12 @@ func (s *JSONStore) SaveFileIndex(file *types.FileIndex) error {
 func (s *JSONStore) SaveFilesIndexBulk(files map[string]types.FileIndex) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	// Prune all files before saving
+	for path, file := range files {
+		s.pruneFileIndex(&file)
+		files[path] = file
+	}
 
 	path := filepath.Join(s.basePath, "index", "files.json")
 	return writeJSON(path, files)

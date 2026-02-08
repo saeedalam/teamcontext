@@ -9,7 +9,7 @@ import "time"
 // FileIndex represents indexed file metadata
 type FileIndex struct {
 	Path           string    `json:"path"`
-	Summary        string    `json:"summary"`
+	Summary        string    `json:"summary,omitempty"`
 	Exports        []Export  `json:"exports,omitempty"`
 	Imports        []string  `json:"imports,omitempty"`
 	Dependencies   []string  `json:"dependencies,omitempty"` // Internal dependencies
@@ -19,7 +19,7 @@ type FileIndex struct {
 	ContentHash    string    `json:"content_hash,omitempty"`
 	SizeBytes      int64     `json:"size_bytes,omitempty"`
 	LineCount      int       `json:"line_count,omitempty"`
-	IndexedAt      time.Time `json:"indexed_at"`
+	IndexedAt      time.Time `json:"indexed_at,omitempty"`
 }
 
 // Export represents an exported symbol from a file

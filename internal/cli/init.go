@@ -134,8 +134,6 @@ func runInit(cmd *cobra.Command, args []string) {
 
 	// Create empty index files
 	writeJSONFile(filepath.Join(tcDir, "index", "files.json"), map[string]interface{}{})
-	writeJSONFile(filepath.Join(tcDir, "index", "architecture.json"), map[string]interface{}{})
-	writeJSONFile(filepath.Join(tcDir, "index", "api-surface.json"), []interface{}{})
 
 	// Create empty knowledge files
 	writeJSONFile(filepath.Join(tcDir, "knowledge", "decisions.json"), []interface{}{})
