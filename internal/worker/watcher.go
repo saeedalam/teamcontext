@@ -992,7 +992,7 @@ func (m *Manager) InitProject() (int, error) {
 	if err := m.GenerateCodeTree(); err != nil {
 		fmt.Fprintf(os.Stderr, "  [WARNING] Failed to generate codetree: %v\n", err)
 	} else {
-		fmt.Fprintf(os.Stderr, "  Generated codetree.txt\n")
+		fmt.Fprintf(os.Stderr, "  Generated tree.json\n")
 	}
 
 	return indexed, err
@@ -1012,113 +1012,80 @@ func (m *Manager) handleDeletedFile(path string) {
 	// For now, edges will become stale but won't cause issues
 }
 
-// GenerateCodeTree creates a compact codetree.txt file with JUST directory structure
+// GenerateCodeTree creates tree.json with full directory structure and file paths
 func (m *Manager) GenerateCodeTree() error {
 	files, err := m.jsonStore.GetFilesIndex()
 	if err != nil {
 		return err
 	}
 
-	// Build tree structure - JUST directories and file counts
+	// Build nested JSON structure
 	type TreeNode struct {
-		Name      string
-		FileCount int
-		KeyFiles  []string
-		Children  map[string]*TreeNode
+		Files    []string             `json:"files,omitempty"`
+		Children map[string]*TreeNode `json:"dirs,omitempty"`
 	}
 
-	root := &TreeNode{Name: ".", Children: make(map[string]*TreeNode)}
+	root := &TreeNode{Children: make(map[string]*TreeNode)}
 
-	// Key file patterns - only the most important entry points
-	keyFilePatterns := []string{
-		"main.ts", "main.go", "main.py", "main.rs",
-		"app.module.ts", "schema.prisma", "go.mod",
-	}
-	isKeyFile := func(filename string) bool {
-		base := filepath.Base(filename)
-		for _, pattern := range keyFilePatterns {
-			if base == pattern {
-				return true
-			}
-		}
-		return false
-	}
+	// Build file lookup map (filename -> full paths)
+	fileLookup := make(map[string][]string)
 
-	// Populate tree
 	for path := range files {
 		parts := strings.Split(filepath.Dir(path), string(filepath.Separator))
 		if len(parts) > 0 && parts[0] == "." {
 			parts = parts[1:]
 		}
 
+		// Navigate/create tree structure
 		current := root
 		for _, part := range parts {
 			if part == "" {
 				continue
 			}
+			if current.Children == nil {
+				current.Children = make(map[string]*TreeNode)
+			}
 			if current.Children[part] == nil {
-				current.Children[part] = &TreeNode{Name: part, Children: make(map[string]*TreeNode)}
+				current.Children[part] = &TreeNode{Children: make(map[string]*TreeNode)}
 			}
 			current = current.Children[part]
 		}
 
-		current.FileCount++
-		if isKeyFile(path) && len(current.KeyFiles) < 2 {
-			current.KeyFiles = append(current.KeyFiles, filepath.Base(path))
-		}
+		// Add file to leaf node
+		filename := filepath.Base(path)
+		current.Files = append(current.Files, filename)
+
+		// Add to lookup map
+		fileLookup[filename] = append(fileLookup[filename], path)
 	}
 
-	// Generate ultra-compact text output
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("# %d files\n", len(files)))
-
-	var writeTree func(node *TreeNode, prefix string, depth int)
-	writeTree = func(node *TreeNode, prefix string, depth int) {
-		if depth > 5 {
-			return
-		}
-		// Sort children
-		names := make([]string, 0, len(node.Children))
-		for name := range node.Children {
-			names = append(names, name)
-		}
-		sort.Strings(names)
-
-		for i, name := range names {
-			child := node.Children[name]
-			isLast := i == len(names)-1
-			connector := "├─"
-			if isLast {
-				connector = "└─"
-			}
-
-			// Ultra-compact: dir/ (N) [key.ts]
-			line := fmt.Sprintf("%s%s%s/", prefix, connector, child.Name)
-			if child.FileCount > 0 {
-				line += fmt.Sprintf(" %d", child.FileCount)
-			}
-			if len(child.KeyFiles) > 0 {
-				line += " [" + strings.Join(child.KeyFiles, ",") + "]"
-			}
-			sb.WriteString(line + "\n")
-
-			// Recurse
-			newPrefix := prefix
-			if isLast {
-				newPrefix += "  "
-			} else {
-				newPrefix += "│ "
-			}
-			writeTree(child, newPrefix, depth+1)
+	// Sort files in each node
+	var sortFiles func(node *TreeNode)
+	sortFiles = func(node *TreeNode) {
+		sort.Strings(node.Files)
+		for _, child := range node.Children {
+			sortFiles(child)
 		}
 	}
+	sortFiles(root)
 
-	writeTree(root, "", 0)
+	// Create output structure
+	output := map[string]interface{}{
+		"total":  len(files),
+		"tree":   root,
+		"lookup": fileLookup,
+	}
 
-	// Write to file
-	treePath := filepath.Join(m.basePath, "codetree.txt")
-	return os.WriteFile(treePath, []byte(sb.String()), 0644)
+	// Write to JSON file
+	data, err := json.MarshalIndent(output, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	treePath := filepath.Join(m.basePath, "tree.json")
+	return os.WriteFile(treePath, data, 0644)
 }
+
 
 
 

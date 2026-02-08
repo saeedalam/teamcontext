@@ -89,23 +89,179 @@ func (s *Server) handleScanImports(params json.RawMessage) (interface{}, error) 
 	}, nil
 }
 
-func (s *Server) handleGetCodeMap(params json.RawMessage) (interface{}, error) {
-	// Read pre-computed codetree.txt (generated during init/index)
-	treePath := filepath.Join(s.basePath, "codetree.txt")
+// handleGetTree returns project structure from pre-computed tree.json
+func (s *Server) handleGetTree(params json.RawMessage) (interface{}, error) {
+	var p struct {
+		Path string `json:"path"` // Optional: filter to subtree
+	}
+	json.Unmarshal(params, &p)
+
+	// Read tree.json
+	treePath := filepath.Join(s.basePath, "tree.json")
 	data, err := os.ReadFile(treePath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return map[string]interface{}{
-				"error": "Code tree not generated yet. Run 'teamcontext index' first.",
-				"hint":  "The code tree is pre-computed during indexing for ultra-fast access.",
+				"error": "Tree not generated. Run 'teamcontext index' first.",
 			}, nil
 		}
 		return nil, err
 	}
 
+	var tree map[string]interface{}
+	if err := json.Unmarshal(data, &tree); err != nil {
+		return nil, err
+	}
+
+	// If path specified, extract subtree
+	if p.Path != "" {
+		treeData := tree["tree"].(map[string]interface{})
+		parts := strings.Split(strings.Trim(p.Path, "/"), "/")
+		for _, part := range parts {
+			if part == "" {
+				continue
+			}
+			if dirs, ok := treeData["dirs"].(map[string]interface{}); ok {
+				if subtree, ok := dirs[part].(map[string]interface{}); ok {
+					treeData = subtree
+				} else {
+					return map[string]interface{}{
+						"error": fmt.Sprintf("Path not found: %s", p.Path),
+					}, nil
+				}
+			} else {
+				return map[string]interface{}{
+					"error": fmt.Sprintf("Path not found: %s", p.Path),
+				}, nil
+			}
+		}
+		return map[string]interface{}{
+			"path":  p.Path,
+			"tree":  treeData,
+			"total": tree["total"],
+		}, nil
+	}
+
+	return tree, nil
+}
+
+// handleGetSignature finds a file by name and returns its code signature (parsed live)
+func (s *Server) handleGetSignature(params json.RawMessage) (interface{}, error) {
+	var p struct {
+		File string `json:"file"` // Filename or partial path
+	}
+	if err := json.Unmarshal(params, &p); err != nil || p.File == "" {
+		return nil, fmt.Errorf("file parameter required")
+	}
+
+	// Find file using tree.json lookup
+	treePath := filepath.Join(s.basePath, "tree.json")
+	data, err := os.ReadFile(treePath)
+	if err != nil {
+		return nil, fmt.Errorf("tree.json not found - run 'teamcontext index'")
+	}
+
+	var tree struct {
+		Lookup map[string][]string `json:"lookup"`
+	}
+	if err := json.Unmarshal(data, &tree); err != nil {
+		return nil, err
+	}
+
+	// Find matching files
+	var matches []string
+	if strings.Contains(p.File, "/") {
+		// Path provided - use directly
+		matches = []string{p.File}
+	} else {
+		// Filename only - lookup
+		if paths, ok := tree.Lookup[p.File]; ok {
+			matches = paths
+		} else {
+			// Fuzzy match - find files containing this name
+			for name, paths := range tree.Lookup {
+				if strings.Contains(strings.ToLower(name), strings.ToLower(p.File)) {
+					matches = append(matches, paths...)
+				}
+			}
+		}
+	}
+
+	if len(matches) == 0 {
+		return map[string]interface{}{
+			"error":   fmt.Sprintf("File not found: %s", p.File),
+			"hint":    "Use full filename or partial match",
+		}, nil
+	}
+
+	if len(matches) > 5 {
+		return map[string]interface{}{
+			"matches": matches[:5],
+			"total":   len(matches),
+			"hint":    "Multiple matches. Be more specific or provide full path.",
+		}, nil
+	}
+
+	// Parse each matched file live
+	results := make([]map[string]interface{}, 0, len(matches))
+	projectRoot := filepath.Dir(s.basePath)
+
+	for _, filePath := range matches {
+		fullPath := filepath.Join(projectRoot, filePath)
+		
+		// Parse file using skeleton parser
+		skel, err := skeleton.ParseFile(fullPath)
+		if err != nil {
+			results = append(results, map[string]interface{}{
+				"file":  filePath,
+				"error": err.Error(),
+			})
+			continue
+		}
+
+		// Extract clean signature
+		var classes []string
+		var functions []string
+		var importList []string
+
+		// Classes
+		for _, cls := range skel.Classes {
+			entry := cls.Name
+			if len(cls.Methods) > 0 {
+				var methods []string
+				for _, m := range cls.Methods {
+					methods = append(methods, m.Name)
+				}
+				entry += " {" + strings.Join(methods, ", ") + "}"
+			}
+			classes = append(classes, entry)
+		}
+
+		// Functions
+		for _, fn := range skel.Functions {
+			functions = append(functions, fn.Name)
+		}
+
+		
+		// Get imports
+		importResults, _ := imports.ScanFile(fullPath)
+		for _, imp := range importResults {
+			importList = append(importList, imp.Imported)
+		}
+
+		results = append(results, map[string]interface{}{
+			"file":      filePath,
+			"classes":   classes,
+			"functions": functions,
+			"imports":   importList,
+		})
+	}
+
+	if len(results) == 1 {
+		return results[0], nil
+	}
 	return map[string]interface{}{
-		"tree": string(data),
-		"note": "Pre-computed during index. Run 'teamcontext index' to refresh.",
+		"results": results,
 	}, nil
 }
 

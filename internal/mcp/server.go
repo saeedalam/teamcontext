@@ -203,12 +203,12 @@ func (s *Server) registerTools() {
 
 	// Analysis tools
 	s.tools["scan_imports"] = s.handleScanImports
-	s.tools["get_code_map"] = s.handleGetCodeMap
+	s.tools["get_tree"] = s.handleGetTree
 	s.tools["get_dependencies"] = s.handleGetDependencies
 	s.tools["trace_flow"] = s.handleTraceFlow
 
 	// Token-saving tools
-	s.tools["get_skeleton"] = s.handleGetSkeleton
+	s.tools["get_signature"] = s.handleGetSignature
 	s.tools["get_types"] = s.handleGetTypes
 	s.tools["search_snippets"] = s.handleSearchSnippets
 	s.tools["get_recent_changes"] = s.handleGetRecentChanges
