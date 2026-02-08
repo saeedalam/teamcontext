@@ -37,6 +37,13 @@ var supportedIDEs = map[string]IDEConfig{
 		},
 		ProjectConfigDir: "", // Claude Desktop doesn't support project-level configs
 	},
+	"claudecode": {
+		Name: "Claude Code (CLI)",
+		ConfigPaths: []string{
+			"~/.claude/config.json",
+		},
+		ProjectConfigDir: ".teamcontext/idp", // Hidden to avoid cluttering root, but Claude Code looks for .mcp.json at root.
+	},
 	"windsurf": {
 		Name: "Windsurf",
 		ConfigPaths: []string{
@@ -53,6 +60,17 @@ var supportedIDEs = map[string]IDEConfig{
 		},
 		ProjectConfigDir: ".vscode",
 	},
+}
+
+// Special case for Claude Code: it prefers .mcp.json at the root of the project
+var claudeCLIConfig = IDEConfig{
+	Name:             "Claude Code (CLI)",
+	ConfigPaths:      []string{"~/.claude/config.json"},
+	ProjectConfigDir: ".", // Special marker for root-level .mcp.json
+}
+
+func init() {
+	supportedIDEs["claudecode"] = claudeCLIConfig
 }
 
 var installGlobal bool
@@ -143,7 +161,11 @@ func runInstall(cmd *cobra.Command, args []string) {
 		fmt.Printf("Binary: %s\n", binaryPath)
 
 		// Create project-level config
-		configPath := filepath.Join(projectRoot, ide.ProjectConfigDir, "mcp.json")
+		configFileName := "mcp.json"
+		if ideName == "claudecode" && ide.ProjectConfigDir == "." {
+			configFileName = ".mcp.json"
+		}
+		configPath := filepath.Join(projectRoot, ide.ProjectConfigDir, configFileName)
 
 		// Create directory if needed
 		configDir := filepath.Dir(configPath)
@@ -446,6 +468,12 @@ func addTeamContextToConfig(config map[string]interface{}, binaryPath string) er
 		config["mcpServers"] = mcpServers
 	}
 
+	// Clean up legacy teambrain entry
+	if _, exists := mcpServers["teambrain"]; exists {
+		fmt.Println("Removing legacy 'teambrain' entry...")
+		delete(mcpServers, "teambrain")
+	}
+
 	// Check if already installed
 	if _, exists := mcpServers["teamcontext"]; exists {
 		fmt.Println("TeamContext is already configured. Updating...")
@@ -465,6 +493,12 @@ func addTeamContextToConfigWithPath(config map[string]interface{}, binaryPath, p
 	if !ok {
 		mcpServers = map[string]interface{}{}
 		config["mcpServers"] = mcpServers
+	}
+
+	// Clean up legacy teambrain entry
+	if _, exists := mcpServers["teambrain"]; exists {
+		fmt.Println("Removing legacy 'teambrain' entry...")
+		delete(mcpServers, "teambrain")
 	}
 
 	// Check if already installed

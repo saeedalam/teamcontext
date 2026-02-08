@@ -10,11 +10,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/spf13/cobra"
 	"github.com/saeedalam/teamcontext/internal/git"
 	"github.com/saeedalam/teamcontext/internal/storage"
 	"github.com/saeedalam/teamcontext/internal/worker"
 	"github.com/saeedalam/teamcontext/pkg/types"
+	"github.com/spf13/cobra"
 )
 
 var projectName string
@@ -322,7 +322,11 @@ func autoConfigureIDEs(projectRoot string) []string {
 			continue // Skip IDEs that don't support project-level configs (like Claude Desktop)
 		}
 
-		configPath := filepath.Join(projectRoot, ide.ProjectConfigDir, "mcp.json")
+		configFileName := "mcp.json"
+		if ideName == "claudecode" && ide.ProjectConfigDir == "." {
+			configFileName = ".mcp.json"
+		}
+		configPath := filepath.Join(projectRoot, ide.ProjectConfigDir, configFileName)
 
 		// Create directory if needed
 		configDir := filepath.Dir(configPath)
@@ -346,7 +350,8 @@ func autoConfigureIDEs(projectRoot string) []string {
 			continue
 		}
 
-		configured = append(configured, fmt.Sprintf("%s (%s/mcp.json)", ide.Name, ide.ProjectConfigDir))
+		displayPath := filepath.Join(ide.ProjectConfigDir, configFileName)
+		configured = append(configured, fmt.Sprintf("%s (%s)", ide.Name, displayPath))
 
 		// For Cursor, also check if there's a global config that might conflict
 		if ideName == "cursor" || ideName == "windsurf" || ideName == "vscode" {
