@@ -33,7 +33,6 @@ Quick Start:
 
 // Execute runs the root command
 func Execute() {
-	fmt.Println("[DEBUG] cli.Execute: entering...")
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -41,7 +40,6 @@ func Execute() {
 }
 
 func init() {
-	println("[DEBUG] cli/root.go: init")
 	rootCmd.AddCommand(initCmd)
 	rootCmd.AddCommand(serveCmd)
 	rootCmd.AddCommand(statusCmd)

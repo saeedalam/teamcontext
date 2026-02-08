@@ -35,7 +35,6 @@ Examples:
 }
 
 func init() {
-	println("[DEBUG] cli/serve.go: init")
 	serveCmd.Flags().StringVarP(&serveDir, "dir", "d", "", "Project directory containing .teamcontext")
 }
 

@@ -71,6 +71,5 @@ func runIndex(cmd *cobra.Command, args []string) {
 }
 
 func init() {
-	println("[DEBUG] cli/index.go: init")
 	rootCmd.AddCommand(indexCmd)
 }

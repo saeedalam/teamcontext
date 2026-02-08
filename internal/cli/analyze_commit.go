@@ -46,7 +46,6 @@ Examples:
 }
 
 func init() {
-	println("[DEBUG] cli/analyze_commit.go: init")
 	analyzeCommitCmd.Flags().BoolVarP(&analyzeQuiet, "quiet", "q", false, "Suppress output (for git hooks)")
 	rootCmd.AddCommand(analyzeCommitCmd)
 }

@@ -39,7 +39,6 @@ Examples:
 }
 
 func init() {
-	println("[DEBUG] cli/sync.go: init")
 	syncCmd.Flags().BoolVar(&syncPush, "push", false, "Only push local knowledge to remote")
 	syncCmd.Flags().BoolVar(&syncPull, "pull", false, "Only pull remote knowledge")
 	rootCmd.AddCommand(syncCmd)

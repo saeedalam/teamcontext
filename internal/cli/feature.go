@@ -80,7 +80,6 @@ Example:
 var activeOnly bool
 
 func init() {
-	println("[DEBUG] cli/feature.go: init")
 	startCmd.Flags().StringVarP(&featureBranch, "branch", "b", "", "Git branch name")
 	startCmd.Flags().StringVarP(&featureExtends, "extends", "e", "", "Parent feature to inherit from")
 

@@ -27,7 +27,6 @@ Example:
 }
 
 func init() {
-	println("[DEBUG] cli/search.go: init")
 	searchCmd.Flags().StringVarP(&searchType, "type", "t", "all", "Search type: all, files, decisions, warnings")
 	searchCmd.Flags().IntVarP(&searchLimit, "limit", "l", 20, "Max results per category")
 }

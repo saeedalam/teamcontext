@@ -12,7 +12,6 @@ var (
 )
 
 func main() {
-	println("[DEBUG] main: starting...")
 	cli.SetVersionInfo(version, commit, date)
 	cli.Execute()
 }

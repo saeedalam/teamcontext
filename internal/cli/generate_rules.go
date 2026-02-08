@@ -43,7 +43,6 @@ Examples:
 }
 
 func init() {
-	println("[DEBUG] cli/generate_rules.go: init")
 	generateRulesCmd.Flags().StringVarP(&rulesFormat, "format", "f", "cursor", "Output format: cursor, claude, windsurf, all")
 	rootCmd.AddCommand(generateRulesCmd)
 }
