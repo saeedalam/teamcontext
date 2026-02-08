@@ -427,14 +427,16 @@ func (s *Server) handleToolsList(req *Request) {
 		},
 		{
 			Name:        "get_code_map",
-			Description: "GET PROJECT STRUCTURE as a tree. Use to understand how the codebase is organized. Returns limited depth/files by default to keep output manageable.",
+			Description: "GET PROJECT STRUCTURE/DIR MAP. Use to understand how the codebase is organized. Returns limited depth/files by default to keep output manageable. For high-level overview, use dirs_only=true.",
 			InputSchema: InputSchema{
 				Type: "object",
 				Properties: map[string]Property{
-					"path":      {Type: "string", Description: "Filter to a subdirectory (recommended for large projects)"},
-					"language":  {Type: "string", Description: "Filter by language"},
-					"max_depth": {Type: "integer", Description: "Max directory depth (default: 3, max: 10)"},
-					"limit":     {Type: "integer", Description: "Max files to include (default: 100, max: 500)"},
+					"path":       {Type: "string", Description: "Filter to a subdirectory (recommended for large projects)"},
+					"language":   {Type: "string", Description: "Filter by language"},
+					"max_depth":  {Type: "integer", Description: "Max directory depth (default: 3, max: 10)"},
+					"limit":      {Type: "integer", Description: "Max items to return (default: 100, max: 1000)"},
+					"recursive":  {Type: "boolean", Description: "Whether to walk subdirectories (default: true)"},
+					"dirs_only":  {Type: "boolean", Description: "Set true to ONLY show directory names (no files) — perfect for 'DIR map'"},
 				},
 			},
 		},
@@ -469,14 +471,15 @@ func (s *Server) handleToolsList(req *Request) {
 		// Use these instead of reading full files to save tokens
 		{
 			Name:        "get_skeleton",
-			Description: "GET CODE STRUCTURE without implementation. Returns function signatures, class definitions, method names - NOT the code bodies. Supports: TypeScript/JS, Go, Python, Java, C#, Ruby, Rust, Kotlin, Swift. Use this FIRST when exploring code. Saves 90% tokens vs reading full files. For directories, processes up to 'limit' files.",
+			Description: "GET CODE STRUCTURE without implementation. Returns function/class signatures - NOT bodies. Use this FIRST when exploring code. For directories, it is NON-RECURSIVE by default (only files in the target dir). Set recursive=true for deep exploration.",
 			InputSchema: InputSchema{
 				Type: "object",
 				Properties: map[string]Property{
-					"path":      {Type: "string", Description: "File or directory path (for directories, use specific subdirectory for best results)"},
+					"path":      {Type: "string", Description: "File or directory path"},
 					"format":    {Type: "string", Description: "'json' or 'text' (default: text)"},
 					"limit":     {Type: "integer", Description: "Max files to process for directories (default: 20, max: 100)"},
 					"max_chars": {Type: "integer", Description: "Max output characters (default: 50000, max: 100000)"},
+					"recursive": {Type: "boolean", Description: "Set true to walk subdirectories (default: false)"},
 				},
 				Required: []string{"path"},
 			},

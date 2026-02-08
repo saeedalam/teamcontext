@@ -91,12 +91,20 @@ func (s *Server) handleScanImports(params json.RawMessage) (interface{}, error) 
 
 func (s *Server) handleGetCodeMap(params json.RawMessage) (interface{}, error) {
 	var p struct {
-		Path     string `json:"path"`
-		Language string `json:"language"`
-		MaxDepth int    `json:"max_depth"`
-		Limit    int    `json:"limit"`
+		Path        string `json:"path"`
+		Language    string `json:"language"`
+		MaxDepth    int    `json:"max_depth"`
+		Limit       int    `json:"limit"`
+		Recursive   *bool   `json:"recursive"`    // Use pointer to detect presence
+		DirsOnly    bool   `json:"dirs_only"`
 	}
 	json.Unmarshal(params, &p)
+
+	// Default values
+	recursive := true
+	if p.Recursive != nil {
+		recursive = *p.Recursive
+	}
 
 	// Default limits to prevent massive outputs
 	if p.MaxDepth <= 0 {
@@ -108,8 +116,8 @@ func (s *Server) handleGetCodeMap(params json.RawMessage) (interface{}, error) {
 	if p.Limit <= 0 {
 		p.Limit = 100 // Default to 100 files
 	}
-	if p.Limit > 500 {
-		p.Limit = 500
+	if p.Limit > 1000 {
+		p.Limit = 1000
 	}
 
 	files, err := s.jsonStore.GetFilesIndex()
@@ -151,8 +159,24 @@ func (s *Server) handleGetCodeMap(params json.RawMessage) (interface{}, error) {
 			relPath = strings.TrimPrefix(path, p.Path)
 			relPath = strings.TrimPrefix(relPath, "/")
 		}
+
 		depth := strings.Count(relPath, string(filepath.Separator))
+		if !recursive && depth > 0 {
+			continue
+		}
 		if depth > p.MaxDepth {
+			continue
+		}
+
+		if p.DirsOnly {
+			dir := filepath.Dir(path)
+			if dir == "" || dir == "." {
+				dir = "(root)"
+			}
+			if _, exists := dirMap[dir]; !exists {
+				dirMap[dir] = []FileEntry{} // Keep directory but don't add files
+				fileCount++
+			}
 			continue
 		}
 
@@ -420,10 +444,11 @@ func uniqueStrings(input []string) []string {
 
 func (s *Server) handleGetSkeleton(params json.RawMessage) (interface{}, error) {
 	var p struct {
-		Path     string `json:"path"`
-		Format   string `json:"format"`
-		Limit    int    `json:"limit"`
-		MaxChars int    `json:"max_chars"`
+		Path      string `json:"path"`
+		Format    string `json:"format"`
+		Limit     int    `json:"limit"`
+		MaxChars  int    `json:"max_chars"`
+		Recursive bool   `json:"recursive"` // Default to false
 	}
 	if err := json.Unmarshal(params, &p); err != nil {
 		return nil, err
@@ -472,6 +497,10 @@ func (s *Server) handleGetSkeleton(params json.RawMessage) (interface{}, error) 
 					name := info.Name()
 					if name == "node_modules" || name == ".git" || name == "vendor" ||
 						name == "dist" || name == "target" || name == "__pycache__" {
+						return filepath.SkipDir
+					}
+					// If not recursive, skip subdirectories
+					if !p.Recursive && filePath != p.Path {
 						return filepath.SkipDir
 					}
 				}
