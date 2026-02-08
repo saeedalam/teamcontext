@@ -162,27 +162,29 @@ cache/
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			fmt.Println("  [DEBUG] Goroutine 1: Starting file indexing...")
 			jsonStore := storage.NewJSONStore(tcDir)
 			sqliteIndex, err := storage.NewSQLiteIndex(tcDir)
 			if err != nil {
-				fmt.Printf("  Warning: Could not initialize SQLite index: %v\n", err)
+				fmt.Printf("  [ERROR] Could not initialize SQLite index: %v\n", err)
 				return
 			}
 			workerMgr := worker.NewManager(tcDir, jsonStore, sqliteIndex)
 			indexed, err := workerMgr.InitProject()
 			if err != nil {
-				fmt.Printf("  Warning: Indexing completed with errors: %v\n", err)
+				fmt.Printf("  [WARNING] Indexing completed with errors: %v\n", err)
 			}
-			fmt.Printf("  ✓ Indexed %d files (skeletons, imports, graph edges)\n", indexed)
+			fmt.Printf("  ✓ [DEBUG] Goroutine 1 complete: Indexed %d files\n", indexed)
 		}()
 
 		// Goroutine 2: Process git history
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			fmt.Println("  [DEBUG] Goroutine 2: Starting git history processing...")
 			report, err := git.ProcessGitHistory(cwd)
 			if err != nil {
-				fmt.Printf("  Warning: Git history processing failed: %v\n", err)
+				fmt.Printf("  [WARNING] Git history processing failed: %v\n", err)
 				return
 			}
 
@@ -197,9 +199,9 @@ cache/
 
 			knowledgeDir := filepath.Join(tcDir, "knowledge")
 			if err := git.WriteReportFiles(report, knowledgeDir); err != nil {
-				fmt.Printf("  Warning: Could not write git reports: %v\n", err)
+				fmt.Printf("  [WARNING] Could not write git reports: %v\n", err)
 			} else {
-				fmt.Printf("  ✓ Processed git history (%d commits, %d contributors)\n", report.CommitCount, report.Contributors)
+				fmt.Printf("  ✓ [DEBUG] Goroutine 2 complete: Processed %d commits\n", report.CommitCount)
 			}
 		}()
 
