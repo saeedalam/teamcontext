@@ -18,7 +18,7 @@ TeamContext is a Go-based MCP server that captures, indexes, and serves everythi
 
 ```bash
 # 1. Build
-git clone <repo> && cd teamcontext
+git clone git@github.com:saeedalam/teamcontext.git && cd teamcontext
 go build -o teamcontext ./cmd/teamcontext/
 sudo mv teamcontext /usr/local/bin/
 
