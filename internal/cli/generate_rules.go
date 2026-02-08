@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/spf13/cobra"
 	"github.com/saeedalam/teamcontext/internal/storage"
 	"github.com/saeedalam/teamcontext/pkg/types"
+	"github.com/spf13/cobra"
 )
 
 var rulesFormat string
@@ -43,6 +43,7 @@ Examples:
 }
 
 func init() {
+	println("[DEBUG] cli/generate_rules.go: init")
 	generateRulesCmd.Flags().StringVarP(&rulesFormat, "format", "f", "cursor", "Output format: cursor, claude, windsurf, all")
 	rootCmd.AddCommand(generateRulesCmd)
 }

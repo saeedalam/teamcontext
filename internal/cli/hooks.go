@@ -41,6 +41,7 @@ var uninstallHooksCmd = &cobra.Command{
 }
 
 func init() {
+	println("[DEBUG] cli/hooks.go: init")
 	rootCmd.AddCommand(installHooksCmd)
 	rootCmd.AddCommand(uninstallHooksCmd)
 }

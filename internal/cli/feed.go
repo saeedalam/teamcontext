@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/spf13/cobra"
 	"github.com/saeedalam/teamcontext/internal/storage"
+	"github.com/spf13/cobra"
 )
 
 var feedLimit int
@@ -33,6 +33,7 @@ Examples:
 }
 
 func init() {
+	println("[DEBUG] cli/feed.go: init")
 	feedCmd.Flags().IntVar(&feedLimit, "limit", 20, "Maximum entries to show")
 	feedCmd.Flags().StringVar(&feedSince, "since", "", "Show entries since (e.g., 7d, 24h, 2025-01-01)")
 	feedCmd.Flags().BoolVar(&feedJSON, "json", false, "Output as JSON")

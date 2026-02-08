@@ -28,5 +28,6 @@ var versionCmd = &cobra.Command{
 }
 
 func init() {
+	println("[DEBUG] cli/version.go: init")
 	rootCmd.AddCommand(versionCmd)
 }

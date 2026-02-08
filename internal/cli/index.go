@@ -3,9 +3,9 @@ package cli
 import (
 	"fmt"
 
-	"github.com/spf13/cobra"
 	"github.com/saeedalam/teamcontext/internal/storage"
 	"github.com/saeedalam/teamcontext/internal/worker"
+	"github.com/spf13/cobra"
 )
 
 var indexCmd = &cobra.Command{
@@ -71,5 +71,6 @@ func runIndex(cmd *cobra.Command, args []string) {
 }
 
 func init() {
+	println("[DEBUG] cli/index.go: init")
 	rootCmd.AddCommand(indexCmd)
 }

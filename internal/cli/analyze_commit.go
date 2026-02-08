@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/spf13/cobra"
 	"github.com/saeedalam/teamcontext/internal/storage"
 	"github.com/saeedalam/teamcontext/pkg/types"
+	"github.com/spf13/cobra"
 )
 
 var analyzeQuiet bool
@@ -46,6 +46,7 @@ Examples:
 }
 
 func init() {
+	println("[DEBUG] cli/analyze_commit.go: init")
 	analyzeCommitCmd.Flags().BoolVarP(&analyzeQuiet, "quiet", "q", false, "Suppress output (for git hooks)")
 	rootCmd.AddCommand(analyzeCommitCmd)
 }

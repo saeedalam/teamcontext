@@ -3,9 +3,9 @@ package cli
 import (
 	"fmt"
 
-	"github.com/spf13/cobra"
 	"github.com/saeedalam/teamcontext/internal/storage"
 	"github.com/saeedalam/teamcontext/pkg/types"
+	"github.com/spf13/cobra"
 )
 
 var featureBranch string
@@ -80,6 +80,7 @@ Example:
 var activeOnly bool
 
 func init() {
+	println("[DEBUG] cli/feature.go: init")
 	startCmd.Flags().StringVarP(&featureBranch, "branch", "b", "", "Git branch name")
 	startCmd.Flags().StringVarP(&featureExtends, "extends", "e", "", "Parent feature to inherit from")
 

@@ -1,8 +1,17 @@
+[DEBUG] cli/analyze_commit.go: init
+[DEBUG] cli/feature.go: init
+[DEBUG] cli/feed.go: init
+[DEBUG] cli/generate_rules.go: init
+[DEBUG] cli/hooks.go: init
+[DEBUG] cli/index.go: init
 [DEBUG] cli/init.go: init
 [DEBUG] cli/install.go: init 1
 [DEBUG] cli/install.go: init 2
 [DEBUG] cli/root.go: init
+[DEBUG] cli/search.go: init
 [DEBUG] cli/serve.go: init
+[DEBUG] cli/sync.go: init
+[DEBUG] cli/version.go: init
 [DEBUG] main: starting...
 [DEBUG] cli.Execute: entering...
 TeamContext - Your Company's Technical Memory

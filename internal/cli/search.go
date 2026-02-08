@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/spf13/cobra"
 	"github.com/saeedalam/teamcontext/internal/storage"
+	"github.com/spf13/cobra"
 )
 
 var searchType string
@@ -27,6 +27,7 @@ Example:
 }
 
 func init() {
+	println("[DEBUG] cli/search.go: init")
 	searchCmd.Flags().StringVarP(&searchType, "type", "t", "all", "Search type: all, files, decisions, warnings")
 	searchCmd.Flags().IntVarP(&searchLimit, "limit", "l", 20, "Max results per category")
 }
