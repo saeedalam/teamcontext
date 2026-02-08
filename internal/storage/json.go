@@ -108,6 +108,14 @@ func (s *JSONStore) SaveFileIndex(file *types.FileIndex) error {
 	return writeJSON(path, files)
 }
 
+func (s *JSONStore) SaveFilesIndexBulk(files map[string]types.FileIndex) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	path := filepath.Join(s.basePath, "index", "files.json")
+	return writeJSON(path, files)
+}
+
 func (s *JSONStore) GetFileIndex(filePath string) (*types.FileIndex, error) {
 	files, err := s.GetFilesIndex()
 	if err != nil {
@@ -595,6 +603,25 @@ func (s *JSONStore) AddEdge(edge *types.Edge) error {
 	}
 
 	graph.Edges = append(graph.Edges, *edge)
+
+	return writeJSON(path, graph)
+}
+
+func (s *JSONStore) AddEdgesBulk(edges []types.Edge) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	path := filepath.Join(s.basePath, "knowledge", "graph.json")
+
+	graph, err := readJSON[types.KnowledgeGraph](path)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	if graph == nil {
+		graph = &types.KnowledgeGraph{Edges: []types.Edge{}}
+	}
+
+	graph.Edges = append(graph.Edges, edges...)
 
 	return writeJSON(path, graph)
 }

@@ -868,6 +868,9 @@ func (m *Manager) InitProject() (int, error) {
 		"coverage": true, ".cache": true,
 	}
 
+	allFiles := make(map[string]types.FileIndex)
+	var allEdges []types.Edge
+
 	err := filepath.Walk(m.projectRoot, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil
@@ -875,7 +878,8 @@ func (m *Manager) InitProject() (int, error) {
 
 		// Skip directories
 		if info.IsDir() {
-			if skipDirs[info.Name()] || strings.HasPrefix(info.Name(), ".") {
+			name := info.Name()
+			if skipDirs[name] || strings.HasPrefix(name, ".") {
 				return filepath.SkipDir
 			}
 			return nil
@@ -892,21 +896,67 @@ func (m *Manager) InitProject() (int, error) {
 			return nil
 		}
 
-		// Index the file
-		if err := m.autoIndexNewFile(path); err != nil {
-			m.recordError("init-index "+path, err)
-		} else {
-			indexed++
+		// Prepare file index entry
+		fileIndex, err := m.prepareFileIndex(path)
+		if err != nil {
+			m.recordError("init-index-prep "+path, err)
+			return nil
 		}
+		allFiles[fileIndex.Path] = *fileIndex
+		indexed++
 
-		// Build graph edges
-		edges, err := m.updateGraphEdgesForFile(path)
-		if err == nil {
-			graphEdges += edges
+		// Save to SQLite
+		m.sqliteIndex.IndexFile(fileIndex)
+
+		// Index code chunks for content search in SQLite
+		m.indexFileContent(path, fileIndex.Language)
+
+		// Collect graph edges (imports)
+		importResults, _ := imports.ScanFile(path)
+		for _, imp := range importResults {
+			if imp.ImportType == "package" || imp.ImportType == "builtin" {
+				continue
+			}
+
+			targetPath := imp.Imported
+			dir := filepath.Dir(path)
+			if imp.ImportType == "relative" && !filepath.IsAbs(targetPath) {
+				targetPath = filepath.Join(dir, targetPath)
+			}
+
+			// Basic resolution for typical extensions
+			if _, err := os.Stat(targetPath); os.IsNotExist(err) {
+				for _, ext := range []string{".ts", ".tsx", ".js", ".jsx", ".go", ".py"} {
+					if _, err := os.Stat(targetPath + ext); err == nil {
+						targetPath = targetPath + ext
+						break
+					}
+				}
+			}
+
+			edge := types.Edge{
+				FromType: "file",
+				FromID:   m.toRelativePath(path),
+				ToType:   "file",
+				ToID:     m.toRelativePath(targetPath),
+				Relation: "imports",
+			}
+			allEdges = append(allEdges, edge)
 		}
 
 		return nil
 	})
+
+	// Perform bulk saves to JSON store—this is the primary performance win
+	if err == nil {
+		if saveErr := m.jsonStore.SaveFilesIndexBulk(allFiles); saveErr != nil {
+			fmt.Printf("  Warning: Error saving bulk file index: %v\n", saveErr)
+		}
+		if saveErr := m.jsonStore.AddEdgesBulk(allEdges); saveErr != nil {
+			fmt.Printf("  Warning: Error saving bulk graph edges: %v\n", saveErr)
+		}
+		graphEdges = len(allEdges)
+	}
 
 	m.logEvent(fmt.Sprintf("Project init complete: %d files indexed, %d graph edges", indexed, graphEdges), nil)
 
@@ -944,37 +994,53 @@ func (m *Manager) handleDeletedFile(path string) {
 	// For now, edges will become stale but won't cause issues
 }
 
-// autoIndexNewFile creates a full index entry for a new file
+// autoIndexNewFile creates a full index entry for a new file and saves it
 func (m *Manager) autoIndexNewFile(path string) error {
-	// Read file content
-	content, err := os.ReadFile(path)
+	fileIndex, err := m.prepareFileIndex(path)
 	if err != nil {
 		return err
+	}
+
+	// Save to JSON store
+	if err := m.jsonStore.SaveFileIndex(fileIndex); err != nil {
+		return err
+	}
+
+	// Save to SQLite
+	m.sqliteIndex.IndexFile(fileIndex)
+
+	// Index code chunks
+	m.indexFileContent(path, fileIndex.Language)
+
+	return nil
+}
+
+// prepareFileIndex builds a FileIndex struct for a file without saving it
+func (m *Manager) prepareFileIndex(path string) (*types.FileIndex, error) {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
 	}
 
 	info, err := os.Stat(path)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	// Determine language from extension
 	ext := strings.ToLower(filepath.Ext(path))
 	language := extToLanguage(ext)
 
-	// Parse skeleton
 	var sk *types.CodeSkeleton
 	if m.config.SkeletonCacheEnable {
 		sk, _ = skeleton.ParseFile(path)
 	}
 
-	// Extract imports
 	importResults, _ := imports.ScanFile(path)
-	var importPaths []string
+	var relImportPaths []string
 	for _, imp := range importResults {
-		importPaths = append(importPaths, imp.Imported)
+		relImportPaths = append(relImportPaths, m.toRelativePath(imp.Imported))
 	}
 
-	// Extract exports from skeleton
 	var exports []types.Export
 	if sk != nil {
 		for _, fn := range sk.Functions {
@@ -991,42 +1057,16 @@ func (m *Manager) autoIndexNewFile(path string) error {
 		}
 	}
 
-	// Convert import paths to relative
-	var relImportPaths []string
-	for _, imp := range importPaths {
-		relImportPaths = append(relImportPaths, m.toRelativePath(imp))
-	}
-
-	// Build descriptive summary from skeleton data
-	summary := buildFileSummary(language, sk)
-
-	// Create file index entry with relative path
-	fileIndex := &types.FileIndex{
+	return &types.FileIndex{
 		Path:      m.toRelativePath(path),
-		Summary:   summary,
+		Summary:   buildFileSummary(language, sk),
 		Exports:   exports,
 		Imports:   relImportPaths,
 		Language:  language,
 		SizeBytes: info.Size(),
 		LineCount: strings.Count(string(content), "\n") + 1,
 		IndexedAt: time.Now(),
-	}
-
-	// Save to JSON store
-	if err := m.jsonStore.SaveFileIndex(fileIndex); err != nil {
-		return err
-	}
-
-	// Save to SQLite for search
-	m.sqliteIndex.IndexFile(fileIndex)
-
-	// Index code chunks for content search
-	m.indexFileContent(path, language)
-
-	// Note: skeletons are not cached during init to avoid OOM on large codebases.
-	// They are parsed on-demand during serve and cached then.
-
-	return nil
+	}, nil
 }
 
 // fullReindexFile does a complete reindex of an existing file
