@@ -1,6 +1,6 @@
 # Binaries
-teamcontext
-teamcontext.exe
+/teamcontext
+/teamcontext.exe
 dist/
 build/
 
