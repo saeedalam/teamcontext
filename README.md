@@ -9,7 +9,8 @@ TeamContext is a Go-based MCP server that captures, indexes, and serves everythi
 ---
 
 ### 📖 Documentation Structure
-*   **[Master Developer Guide](DOCS/MASTER_DEVELOPER_GUIDE.md)**: Your primary entry point for elite workflows and features.
+*   **[Full Reference Guide](DOCS/REFERENCE.md)**: Exhaustive details on all 54 tools and CLI commands.
+*   **[Team Cheat Sheet](DOCS/CHEAT_SHEET.md)**: 🚀 **Quick start guide for team members and real-world use cases.**
 *   **[DOCS/](DOCS/)**: Deep reference material, tool schemas, and scenario tutorials.
 
 ---
@@ -33,6 +34,7 @@ teamcontext init
 That's it. `teamcontext init` automatically:
 - Creates `.teamcontext/` knowledge store
 - Indexes all code files (skeletons, imports, dependency graph)
+  - **Performance**: Indexes 2,700+ files in ~10 seconds (v0.2.1+)
 - Configures your IDE with MCP settings
 - Starts background workers for git-connected auto-indexing
 
@@ -174,7 +176,7 @@ Task types: `add-endpoint`, `add-feature`, `add-service`, `fix-bug`, `refactor`,
 | Tool | What It Does |
 |------|-------------|
 | `scan_imports` | Scan file/directory imports (TS, Go, Python) |
-| `get_code_map` | Hierarchical view of indexed files |
+| `get_tree` | **Ultra-compact** project structure navigation. Flattens single-child dirs and auto-collapses 'gen' folders. |
 | `get_dependencies` | What a file depends on / what depends on it |
 | `trace_flow` | Trace data flow through import chain |
 

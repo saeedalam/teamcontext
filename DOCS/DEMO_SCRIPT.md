@@ -37,9 +37,9 @@ The AI calls `get_project` and returns a high-level overview: name, primary lang
 
 Then ask:
 
-> **"Show me the code structure"**
+> **"Show me the hierarchical code structure"**
 
-The AI calls `get_code_map` and returns a hierarchical tree of all indexed files.
+The AI calls `get_tree` and returns an ultra-compact nested tree of your project.
 
 **Talking point:** "TeamContext indexed the entire project in one command. The AI didn't have to read every file individually—it already knows the full structure and purpose of our codebase."
 
@@ -181,7 +181,7 @@ Ask:
 
 > **"I just joined the team, onboard me"**
 
-The AI calls `onboard` and returns a structured walkthrough of the project, key decisions, active warnings, and expert contacts.
+The AI calls `onboard` and returns a structured walkthrough of the project, key decisions, active warnings, expert contacts, and an ultra-compact tree map.
 
 **Talking point:** "A new developer gets the 'Team Brain' in one call. No hunting through stale wikis or digging through Slack archives."
 

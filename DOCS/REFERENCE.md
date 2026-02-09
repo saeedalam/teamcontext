@@ -190,6 +190,7 @@ The AI calls `resume_context` and gets your compressed session history: files di
 | `teamcontext uninstall <ide>` | Remove IDE config | Cleanup |
 | `teamcontext status` | Show project state | Quick check |
 | `teamcontext stats` | Detailed statistics | Deep check |
+| `teamcontext debug-mcp` | Debug MCP tools directly from CLI | Troubleshooting tool logic |
 | `teamcontext version` | Show version, commit, build date | Verify install |
 
 ### Server & IDE
@@ -375,12 +376,12 @@ These are the tools the AI agent calls when you interact through your IDE. You d
 → Supports: TypeScript, Go, Python
 ```
 
-**`get_code_map`** — Hierarchical file tree / DIR Map
+**`get_tree`** — Ultra-compact project navigation
 ```
-"Show me the project DIR map (no files)"
-→ dirs_only: true (default: false)
-→ recursive: true (default: true)
-→ Returns tree of all directories, perfect for high-level overview.
+"Show me the hierarchical structure of apps/backend"
+→ path: "apps/backend" (optional)
+→ Returns: Optimized tree with flattened single-child dirs and auto-collapsed 'gen' folders.
+→ Highly token-efficient for large projects.
 ```
 
 **`get_dependencies`** — Dependency analysis
@@ -450,7 +451,7 @@ These are the tools the AI agent calls when you interact through your IDE. You d
 "I just joined, onboard me"
 → role: "backend" (optional), focus: "patterns" (optional)
 → Returns: project overview, top 15 decisions, warnings, patterns,
-  code map, active features, expert contacts, knowledge risks, next steps
+  ultra-compact tree, active features, expert contacts, knowledge risks, next steps
 ```
 
 **`get_feed`** — Recent team activity
