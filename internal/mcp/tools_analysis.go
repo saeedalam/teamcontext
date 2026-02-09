@@ -108,13 +108,123 @@ func (s *Server) handleGetTree(params json.RawMessage) (interface{}, error) {
 		return nil, err
 	}
 
-	// Just return the raw YAML string - it's already ultra compact
-	// If path is specified, we would ideally filter it, but for now simple is better.
+	lines := strings.Split(string(data), "\n")
+	
+	// Determine filter path and max depth
+	filterPath := strings.Trim(p.Path, "/")
+	maxDepth := 0 // 0 means no limit if path specified, but if no path we set default
+	if filterPath == "" || filterPath == "." {
+		maxDepth = 2 // Default depth for root view
+	}
+
+	searchParts := []string{}
+	if filterPath != "" {
+		searchParts = strings.Split(filterPath, "/")
+	}
+	
+	var filtered []string
+	currentIndent := -1
+	partIdx := 0
+	foundTarget := false
+	targetIndent := -1
+
+	for i := 0; i < len(lines); i++ {
+		line := lines[i]
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+
+		// Calculate indent
+		indent := 0
+		for _, char := range line {
+			if char == ' ' {
+				indent++
+			} else {
+				break
+			}
+		}
+
+		if !foundTarget {
+			if len(searchParts) == 0 {
+				foundTarget = true
+				targetIndent = 0
+				// Proceed to process root
+			} else {
+				trimmed := strings.TrimSpace(line)
+				if !strings.Contains(trimmed, ":") {
+					continue
+				}
+				namePart := strings.TrimSuffix(trimmed, ":")
+				
+				if strings.Contains(namePart, searchParts[partIdx]) {
+					if indent > currentIndent {
+						partIdx++
+						currentIndent = indent
+						if partIdx == len(searchParts) {
+							foundTarget = true
+							targetIndent = indent
+							filtered = append(filtered, line)
+							continue
+						}
+					}
+				}
+				continue
+			}
+		}
+
+		// If we are here, we found the target or are in root
+		if foundTarget {
+			// Check depth
+			relDepth := (indent - targetIndent) / 2
+			if maxDepth > 0 && relDepth >= maxDepth {
+				// Too deep, but we might want to show that there's more
+				if strings.Contains(line, ":") && !strings.Contains(line, "[") {
+					// It's a directory, show as collapsed
+					// Check if already in filtered to avoid duplicates if target was a dir
+					// Actually just skip it and maybe add a generic "[...]" if it's the first one?
+					// Simpler: if it's the right depth, show it as collapsed
+					if relDepth == maxDepth {
+						fmtLine := strings.TrimRight(line, " ")
+						if !strings.HasSuffix(fmtLine, "]") && !strings.HasSuffix(fmtLine, "...") {
+							filtered = append(filtered, fmtLine + " [...]")
+						}
+					}
+				}
+				continue
+			}
+
+			// If it's the root itself (indent == targetIndent), skip if we already added it during search
+			if indent == targetIndent && len(searchParts) > 0 {
+				continue
+			}
+			
+			// Stop if we hit a sibling of the target
+			if len(searchParts) > 0 && indent <= targetIndent {
+				break
+			}
+
+			filtered = append(filtered, line)
+		}
+	}
+
+	if len(filtered) == 0 {
+		return map[string]interface{}{
+			"error": fmt.Sprintf("Path '%s' not found or empty", p.Path),
+		}, nil
+	}
+
+	note := "Showing ultra-compact YAML tree."
+	if maxDepth > 0 {
+		note += fmt.Sprintf(" Limited to depth %d. Use 'path' to see more.", maxDepth)
+	}
+
 	return map[string]interface{}{
-		"tree": string(data),
-		"note": "Pre-computed YAML tree. Use path filtering in your query for targeted results.",
+		"tree": strings.Join(filtered, "\n"),
+		"note": note,
 	}, nil
 }
+
+
 
 
 

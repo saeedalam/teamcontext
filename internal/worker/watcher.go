@@ -1012,7 +1012,22 @@ func (m *Manager) handleDeletedFile(path string) {
 	// For now, edges will become stale but won't cause issues
 }
 
-// GenerateCodeTree creates tree.yaml - ULTRA COMPACT YAML format
+// treeNode represents a node in the code tree for ultra-compact YAML generation
+type treeNode struct {
+	Dirs  map[string]*treeNode
+	Files []string
+}
+
+// countFilesInNode recursively counts files in a node
+func countFilesInNode(n *treeNode) int {
+	count := len(n.Files)
+	for _, child := range n.Dirs {
+		count += countFilesInNode(child)
+	}
+	return count
+}
+
+// GenerateCodeTree creates tree.yaml - ULTRA-ULTRA COMPACT YAML format with auto-collapsing
 func (m *Manager) GenerateCodeTree() error {
 	files, err := m.jsonStore.GetFilesIndex()
 	if err != nil {
@@ -1020,11 +1035,7 @@ func (m *Manager) GenerateCodeTree() error {
 	}
 
 	// Build nested structure
-	type Node struct {
-		Dirs  map[string]*Node
-		Files []string
-	}
-	root := &Node{Dirs: make(map[string]*Node)}
+	root := &treeNode{Dirs: make(map[string]*treeNode)}
 
 	for path := range files {
 		parts := strings.Split(filepath.Dir(path), string(filepath.Separator))
@@ -1038,22 +1049,42 @@ func (m *Manager) GenerateCodeTree() error {
 				continue
 			}
 			if curr.Dirs[part] == nil {
-				curr.Dirs[part] = &Node{Dirs: make(map[string]*Node)}
+				curr.Dirs[part] = &treeNode{Dirs: make(map[string]*treeNode)}
 			}
 			curr = curr.Dirs[part]
 		}
 		curr.Files = append(curr.Files, filepath.Base(path))
 	}
 
-	// Generate YAML string recursively
+	// Generate YAML string recursively with heuristics
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "total: %d\n", len(files))
 	fmt.Fprintf(&sb, "tree:\n")
 
-	var writeNode func(n *Node, indent int)
-	writeNode = func(n *Node, indent int) {
+	var writeNode func(n *treeNode, indent int, prefix string)
+	writeNode = func(n *treeNode, indent int, prefix string) {
 		spaces := strings.Repeat("  ", indent)
-		
+
+		// Heuristic 1: Directory Flattening
+		// If this node has exactly one subdirectory and no files, combine it with the child
+		if len(n.Dirs) == 1 && len(n.Files) == 0 {
+			for name, child := range n.Dirs {
+				newPrefix := name
+				if prefix != "" {
+					newPrefix = prefix + "/" + name
+				}
+				writeNode(child, indent, newPrefix)
+				return
+			}
+		}
+
+		// If we reach here, we are writing a real node
+		if prefix != "" {
+			fmt.Fprintf(&sb, "%s%s:\n", spaces, prefix)
+			indent++
+			spaces = strings.Repeat("  ", indent)
+		}
+
 		// Sort dirs for stability
 		dirs := make([]string, 0, len(n.Dirs))
 		for d := range n.Dirs {
@@ -1062,22 +1093,56 @@ func (m *Manager) GenerateCodeTree() error {
 		sort.Strings(dirs)
 
 		for _, d := range dirs {
-			fmt.Fprintf(&sb, "%s%s:\n", spaces, d)
-			writeNode(n.Dirs[d], indent+1)
+			child := n.Dirs[d]
+			
+			// Heuristic 2: Auto-Collapse
+			shouldCollapse := false
+			collapseReason := ""
+			
+			// a) By name
+			lowerD := strings.ToLower(d)
+			if lowerD == "gen" || lowerD == "codegen" || lowerD == "generated" || 
+			   lowerD == "build" || lowerD == "dist" || lowerD == "node_modules" {
+				shouldCollapse = true
+				collapseReason = "generated"
+			}
+			
+			// b) Hidden folders
+			if strings.HasPrefix(d, ".") && d != "." && d != ".." {
+				shouldCollapse = true
+				collapseReason = "hidden"
+			}
+
+			if shouldCollapse {
+				count := countFilesInNode(child)
+				if count > 0 {
+					fmt.Fprintf(&sb, "%s%s: [%d %s files]\n", spaces, d, count, collapseReason)
+					continue
+				}
+			}
+
+			writeNode(child, indent, d)
 		}
 
 		// Sort files for stability
 		sort.Strings(n.Files)
-		for _, f := range n.Files {
-			fmt.Fprintf(&sb, "%s- %s\n", spaces, f)
+		
+		// Heuristic 3: Excessive files collapse
+		if len(n.Files) > 12 {
+			fmt.Fprintf(&sb, "%s- [%d files...]\n", spaces, len(n.Files))
+		} else {
+			for _, f := range n.Files {
+				fmt.Fprintf(&sb, "%s- %s\n", spaces, f)
+			}
 		}
 	}
 
-	writeNode(root, 1)
+	writeNode(root, 1, "")
 
 	treePath := filepath.Join(m.basePath, "tree.yaml")
 	return os.WriteFile(treePath, []byte(sb.String()), 0644)
 }
+
 
 
 
