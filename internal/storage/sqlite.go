@@ -31,10 +31,15 @@ func NewSQLiteIndex(basePath string) (*SQLiteIndex, error) {
 		return nil, err
 	}
 
-	db, err := sql.Open("sqlite", dbPath)
+	// Add connection parameters for better concurrency
+	dsn := fmt.Sprintf("%s?_journal_mode=WAL&_busy_timeout=10000", dbPath)
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err
 	}
+
+	// Set connection limits
+	db.SetMaxOpenConns(1) // Keep it simple for now to avoid locks
 
 	idx := &SQLiteIndex{
 		db:       db,
@@ -233,15 +238,51 @@ func (idx *SQLiteIndex) Close() error {
 	return idx.db.Close()
 }
 
+type queryer interface {
+	Exec(query string, args ...any) (sql.Result, error)
+	Prepare(query string) (*sql.Stmt, error)
+	Query(query string, args ...any) (*sql.Rows, error)
+	QueryRow(query string, args ...any) *sql.Row
+}
+
+// WithTransaction runs a function within a SQLite transaction
+func (idx *SQLiteIndex) WithTransaction(fn func(tx *sql.Tx) error) error {
+	tx, err := idx.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if p := recover(); p != nil {
+			tx.Rollback()
+			panic(p)
+		}
+	}()
+
+	if err := fn(tx); err != nil {
+		tx.Rollback()
+		return err
+	}
+	return tx.Commit()
+}
+
 // --- Indexing ---
 
 // IndexFile indexes a file for search
 func (idx *SQLiteIndex) IndexFile(file *types.FileIndex) error {
+	return idx.indexFile(idx.db, file)
+}
+
+// IndexFileTx indexes a file within a transaction
+func (idx *SQLiteIndex) IndexFileTx(tx *sql.Tx, file *types.FileIndex) error {
+	return idx.indexFile(tx, file)
+}
+
+func (idx *SQLiteIndex) indexFile(q queryer, file *types.FileIndex) error {
 	exportsJSON, _ := json.Marshal(file.Exports)
 	importsJSON, _ := json.Marshal(file.Imports)
 	patternsJSON, _ := json.Marshal(file.Patterns)
 
-	_, err := idx.db.Exec(`
+	_, err := q.Exec(`
 		INSERT OR REPLACE INTO files (path, summary, exports, imports, language, patterns, content_hash, indexed_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`, file.Path, file.Summary, string(exportsJSON), string(importsJSON),
@@ -550,14 +591,23 @@ type CodeChunk struct {
 
 // IndexCodeChunks indexes code chunks for a file (replaces existing chunks for that file)
 func (idx *SQLiteIndex) IndexCodeChunks(filePath string, chunks []CodeChunk) error {
+	return idx.indexCodeChunks(idx.db, filePath, chunks)
+}
+
+// IndexCodeChunksTx indexes code chunks within a transaction
+func (idx *SQLiteIndex) IndexCodeChunksTx(tx *sql.Tx, filePath string, chunks []CodeChunk) error {
+	return idx.indexCodeChunks(tx, filePath, chunks)
+}
+
+func (idx *SQLiteIndex) indexCodeChunks(q queryer, filePath string, chunks []CodeChunk) error {
 	// Delete existing chunks for this file
-	_, err := idx.db.Exec("DELETE FROM code_chunks WHERE file_path = ?", filePath)
+	_, err := q.Exec("DELETE FROM code_chunks WHERE file_path = ?", filePath)
 	if err != nil {
 		return err
 	}
 
 	// Insert new chunks
-	stmt, err := idx.db.Prepare(`
+	stmt, err := q.Prepare(`
 		INSERT INTO code_chunks (file_path, chunk_type, chunk_name, start_line, end_line, content, language, indexed_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`)

@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -347,7 +348,7 @@ func (m *Manager) autoIndexFile(path string) error {
 	m.sqliteIndex.IndexFile(fileIndex)
 
 	// Index content for search
-	m.indexFileContent(path, language)
+	m.indexFileContent(nil, path, language)
 
 	// Cache skeleton if enabled
 	if m.config.SkeletonCacheEnable {
@@ -363,7 +364,7 @@ func (m *Manager) autoIndexFile(path string) error {
 }
 
 // indexFileContent indexes file content chunks for search
-func (m *Manager) indexFileContent(path string, language string) {
+func (m *Manager) indexFileContent(tx *sql.Tx, path string, language string) {
 	content, err := os.ReadFile(path)
 	if err != nil {
 		return
@@ -427,7 +428,11 @@ func (m *Manager) indexFileContent(path string, language string) {
 		}
 	}
 
-	m.sqliteIndex.IndexCodeChunks(relPath, chunks)
+	if tx != nil {
+		m.sqliteIndex.IndexCodeChunksTx(tx, relPath, chunks)
+	} else {
+		m.sqliteIndex.IndexCodeChunks(relPath, chunks)
+	}
 }
 
 // Helper functions
@@ -871,84 +876,87 @@ func (m *Manager) InitProject() (int, error) {
 	allFiles := make(map[string]types.FileIndex)
 	var allEdges []types.Edge
 
-	err := filepath.Walk(m.projectRoot, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return nil
-		}
-
-		// Skip directories
-		if info.IsDir() {
-			name := info.Name()
-			if skipDirs[name] || strings.HasPrefix(name, ".") {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-
-		// Check extension
-		ext := strings.ToLower(filepath.Ext(path))
-		if !supportedExts[ext] {
-			return nil
-		}
-
-		// Skip very large files (> 1MB)
-		if info.Size() > 1024*1024 {
-			return nil
-		}
-
-		// Prepare file index entry
-		fileIndex, err := m.prepareFileIndex(path)
-		if err != nil {
-			m.recordError("init-index-prep "+path, err)
-			return nil
-		}
-		allFiles[fileIndex.Path] = *fileIndex
-		indexed++
-
-		if indexed%50 == 0 {
-			fmt.Fprintf(os.Stderr, "  ... processed %d files\n", indexed)
-		}
-
-		// Save to SQLite
-		m.sqliteIndex.IndexFile(fileIndex)
-
-		// Index code chunks for content search in SQLite
-		m.indexFileContent(path, fileIndex.Language)
-
-		// Collect graph edges (imports)
-		importResults, _ := imports.ScanFile(path)
-		for _, imp := range importResults {
-			if imp.ImportType == "package" || imp.ImportType == "builtin" {
-				continue
+	// Run the entire project walk in a single transaction for efficiency
+	err := m.sqliteIndex.WithTransaction(func(tx *sql.Tx) error {
+		return filepath.Walk(m.projectRoot, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return nil
 			}
 
-			targetPath := imp.Imported
-			dir := filepath.Dir(path)
-			if imp.ImportType == "relative" && !filepath.IsAbs(targetPath) {
-				targetPath = filepath.Join(dir, targetPath)
+			// Skip directories
+			if info.IsDir() {
+				name := info.Name()
+				if skipDirs[name] || strings.HasPrefix(name, ".") {
+					return filepath.SkipDir
+				}
+				return nil
 			}
 
-			// Basic resolution for typical extensions
-			if _, err := os.Stat(targetPath); os.IsNotExist(err) {
-				for _, ext := range []string{".ts", ".tsx", ".js", ".jsx", ".go", ".py"} {
-					if _, err := os.Stat(targetPath + ext); err == nil {
-						targetPath = targetPath + ext
-						break
+			// Check extension
+			ext := strings.ToLower(filepath.Ext(path))
+			if !supportedExts[ext] {
+				return nil
+			}
+
+			// Skip very large files (> 1MB)
+			if info.Size() > 1024*1024 {
+				return nil
+			}
+
+			// Prepare file index entry
+			fileIndex, err := m.prepareFileIndex(path)
+			if err != nil {
+				m.recordError("init-index-prep "+path, err)
+				return nil
+			}
+			allFiles[fileIndex.Path] = *fileIndex
+			indexed++
+
+			if indexed%50 == 0 {
+				fmt.Fprintf(os.Stderr, "  ... processed %d files\n", indexed)
+			}
+
+			// Save to SQLite within transaction
+			m.sqliteIndex.IndexFileTx(tx, fileIndex)
+
+			// Index code chunks for content search in SQLite within transaction
+			m.indexFileContent(tx, path, fileIndex.Language)
+
+			// Collect graph edges (imports)
+			importResults, _ := imports.ScanFile(path)
+			for _, imp := range importResults {
+				if imp.ImportType == "package" || imp.ImportType == "builtin" {
+					continue
+				}
+
+				targetPath := imp.Imported
+				dir := filepath.Dir(path)
+				if imp.ImportType == "relative" && !filepath.IsAbs(targetPath) {
+					targetPath = filepath.Join(dir, targetPath)
+				}
+
+				// Basic resolution for typical extensions
+				if _, err := os.Stat(targetPath); os.IsNotExist(err) {
+					for _, ext := range []string{".ts", ".tsx", ".js", ".jsx", ".go", ".py"} {
+						if _, err := os.Stat(targetPath + ext); err == nil {
+							targetPath = targetPath + ext
+							break
+						}
 					}
 				}
+
+				edge := types.Edge{
+					FromType: "file",
+					FromID:   m.toRelativePath(path),
+					ToType:   "file",
+					ToID:     m.toRelativePath(targetPath),
+					Relation: "imports",
+				}
+				allEdges = append(allEdges, edge)
 			}
 
-			edge := types.Edge{
-				FromType: "file",
-				FromID:   m.toRelativePath(path),
-				ToType:   "file",
-				ToID:     m.toRelativePath(targetPath),
-				Relation: "imports",
-			}
-			allEdges = append(allEdges, edge)
-		}
-
-		return nil
+			return nil
+		})
 	})
 
 	if err != nil {
@@ -1166,7 +1174,7 @@ func (m *Manager) autoIndexNewFile(path string) error {
 	m.sqliteIndex.IndexFile(fileIndex)
 
 	// Index code chunks
-	m.indexFileContent(path, fileIndex.Language)
+	m.indexFileContent(nil, path, fileIndex.Language)
 
 	return nil
 }
@@ -1284,7 +1292,7 @@ func (m *Manager) fullReindexFile(path string, existing *types.FileIndex) error 
 	m.sqliteIndex.IndexFile(existing)
 
 	// Re-index code chunks
-	m.indexFileContent(path, existing.Language)
+	m.indexFileContent(nil, path, existing.Language)
 
 	// Update skeleton cache
 	if sk != nil {
