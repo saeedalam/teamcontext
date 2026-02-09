@@ -156,6 +156,15 @@ func NewServer(basePath string) (*Server, error) {
 	return s, nil
 }
 
+// HandleToolCall is an exported helper for testing tools directly
+func (s *Server) HandleToolCall(name string, params json.RawMessage) (interface{}, error) {
+	handler, ok := s.tools[name]
+	if !ok {
+		return nil, fmt.Errorf("tool not found: %s", name)
+	}
+	return handler(params)
+}
+
 func (s *Server) registerTools() {
 	// Query tools
 	s.tools["query"] = s.handleQuery
