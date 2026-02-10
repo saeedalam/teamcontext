@@ -53,14 +53,13 @@ That's it. `teamcontext init` automatically:
 cd teamcontext
 
 # Option 1: Makefile (recommended)
-make build                    # Build for current platform
-make install-system           # Build + copy to /usr/local/bin
+make build                    # Build binary in current directory
+make install                  # Build + install to ~/go/bin AND /usr/local/bin (requires sudo)
+make install-local            # Build + install to ~/go/bin only (no sudo)
 make release                  # Cross-compile for all platforms
 
 # Option 2: Go directly
-go build -o teamcontext ./cmd/teamcontext/
-sudo mv teamcontext /usr/local/bin/        # Linux/Mac
-go install ./cmd/teamcontext/               # Go way (adds to $GOPATH/bin)
+go install ./cmd/teamcontext/               # Installs to ~/go/bin
 ```
 
 ### Version

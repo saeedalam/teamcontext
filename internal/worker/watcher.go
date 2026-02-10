@@ -855,6 +855,7 @@ func (m *Manager) ClearCache() {
 func (m *Manager) InitProject() (int, error) {
 	m.logEvent("Starting project initialization", nil)
 
+	var err error
 	indexed := 0
 	graphEdges := 0
 
@@ -876,91 +877,108 @@ func (m *Manager) InitProject() (int, error) {
 	allFiles := make(map[string]types.FileIndex)
 	var allEdges []types.Edge
 
-	// Run the entire project walk in a single transaction for efficiency
-	err := m.sqliteIndex.WithTransaction(func(tx *sql.Tx) error {
-		return filepath.Walk(m.projectRoot, func(path string, info os.FileInfo, err error) error {
-			if err != nil {
-				return nil
-			}
-
-			// Skip directories
-			if info.IsDir() {
-				name := info.Name()
-				if skipDirs[name] || strings.HasPrefix(name, ".") {
-					return filepath.SkipDir
-				}
-				return nil
-			}
-
-			// Check extension
-			ext := strings.ToLower(filepath.Ext(path))
-			if !supportedExts[ext] {
-				return nil
-			}
-
-			// Skip very large files (> 1MB)
-			if info.Size() > 1024*1024 {
-				return nil
-			}
-
-			// Prepare file index entry
-			fileIndex, err := m.prepareFileIndex(path)
-			if err != nil {
-				m.recordError("init-index-prep "+path, err)
-				return nil
-			}
-			allFiles[fileIndex.Path] = *fileIndex
-			indexed++
-
-			if indexed%50 == 0 {
-				fmt.Fprintf(os.Stderr, "  ... processed %d files\n", indexed)
-			}
-
-			// Save to SQLite within transaction
-			m.sqliteIndex.IndexFileTx(tx, fileIndex)
-
-			// Index code chunks for content search in SQLite within transaction
-			m.indexFileContent(tx, path, fileIndex.Language)
-
-			// Collect graph edges (imports)
-			importResults, _ := imports.ScanFile(path)
-			for _, imp := range importResults {
-				if imp.ImportType == "package" || imp.ImportType == "builtin" {
-					continue
-				}
-
-				targetPath := imp.Imported
-				dir := filepath.Dir(path)
-				if imp.ImportType == "relative" && !filepath.IsAbs(targetPath) {
-					targetPath = filepath.Join(dir, targetPath)
-				}
-
-				// Basic resolution for typical extensions
-				if _, err := os.Stat(targetPath); os.IsNotExist(err) {
-					for _, ext := range []string{".ts", ".tsx", ".js", ".jsx", ".go", ".py"} {
-						if _, err := os.Stat(targetPath + ext); err == nil {
-							targetPath = targetPath + ext
-							break
-						}
-					}
-				}
-
-				edge := types.Edge{
-					FromType: "file",
-					FromID:   m.toRelativePath(path),
-					ToType:   "file",
-					ToID:     m.toRelativePath(targetPath),
-					Relation: "imports",
-				}
-				allEdges = append(allEdges, edge)
-			}
-
+	// 1. Collect all files to index
+	var filesToIndex []string
+	fmt.Fprintf(os.Stderr, "  ... scanning directories\n")
+	filepath.Walk(m.projectRoot, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
 			return nil
-		})
+		}
+
+		if info.IsDir() {
+			name := info.Name()
+			if skipDirs[name] || strings.HasPrefix(name, ".") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+
+		ext := strings.ToLower(filepath.Ext(path))
+		if !supportedExts[ext] {
+			return nil
+		}
+
+		if info.Size() > 1024*1024 {
+			return nil
+		}
+
+		filesToIndex = append(filesToIndex, path)
+		return nil
 	})
 
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "  [DEBUG] Error during file walk: %v\n", err)
+	fmt.Fprintf(os.Stderr, "  ... found %d files to index\n", len(filesToIndex))
+	fmt.Fprintf(os.Stderr, "  ... preparing database\n")
+
+	// 2. Process in batches (200 files per transaction) to avoid kernel hangs and DB locks
+	batchSize := 200
+	for i := 0; i < len(filesToIndex); i += batchSize {
+		end := i + batchSize
+		if end > len(filesToIndex) {
+			end = len(filesToIndex)
+		}
+
+		batch := filesToIndex[i:end]
+		batchErr := m.sqliteIndex.WithTransaction(func(tx *sql.Tx) error {
+			for _, path := range batch {
+				// Prepare file index entry
+				fileIndex, err := m.prepareFileIndex(path)
+				if err != nil {
+					m.recordError("init-index-prep "+path, err)
+					continue
+				}
+				allFiles[fileIndex.Path] = *fileIndex
+				indexed++
+
+				// Save to SQLite within transaction
+				m.sqliteIndex.IndexFileTx(tx, fileIndex)
+
+				// Index code chunks for content search in SQLite within transaction
+				m.indexFileContent(tx, path, fileIndex.Language)
+
+				// Collect graph edges (imports)
+				importResults, _ := imports.ScanFile(path)
+				for _, imp := range importResults {
+					if imp.ImportType == "package" || imp.ImportType == "builtin" {
+						continue
+					}
+
+					targetPath := imp.Imported
+					dir := filepath.Dir(path)
+					if imp.ImportType == "relative" && !filepath.IsAbs(targetPath) {
+						targetPath = filepath.Join(dir, targetPath)
+					}
+
+					// Basic resolution for typical extensions
+					if _, err := os.Stat(targetPath); os.IsNotExist(err) {
+						for _, ext := range []string{".ts", ".tsx", ".js", ".jsx", ".go", ".py"} {
+							if _, err := os.Stat(targetPath + ext); err == nil {
+								targetPath = targetPath + ext
+								break
+							}
+						}
+					}
+
+					edge := types.Edge{
+						FromType: "file",
+						FromID:   m.toRelativePath(path),
+						ToType:   "file",
+						ToID:     m.toRelativePath(targetPath),
+						Relation: "imports",
+					}
+					allEdges = append(allEdges, edge)
+				}
+			}
+			return nil
+		})
+
+		if batchErr != nil {
+			err = batchErr
+			fmt.Fprintf(os.Stderr, "  [ERROR] Batch %d-%d failed: %v\n", i, end, batchErr)
+		}
+
+		if indexed%batchSize == 0 || indexed == len(filesToIndex) {
+			fmt.Fprintf(os.Stderr, "  ✓ Processed %d/%d files\n", indexed, len(filesToIndex))
+		}
 	}
 
 	// Perform bulk saves to JSON store—this is the primary performance win

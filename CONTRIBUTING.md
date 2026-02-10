@@ -12,7 +12,8 @@ The project uses a standard Go toolchain with a `Makefile` for convenience.
 make build          # Local build (binary: ./teamcontext)
 make test           # Run suite (unit + integration)
 make lint           # Vet + Staticcheck
-make install-system # Build and install to /usr/local/bin
+make install        # Build + install to ~/go/bin AND /usr/local/bin (sudo)
+make install-local  # Build + install to ~/go/bin only (no sudo)
 ```
 
 ---

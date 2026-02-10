@@ -7,15 +7,23 @@ LDFLAGS  := -s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.da
 
 PLATFORMS := darwin/amd64 darwin/arm64 linux/amd64 linux/arm64 windows/amd64
 
-.PHONY: all build install clean test vet lint release
+.PHONY: all build install clean test vet lint release install-local
 
 all: build
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o $(BINARY) ./cmd/teamcontext
 
-install:
+# Install to ~/go/bin AND /usr/local/bin (keeps both in sync)
+install: build
 	go install -ldflags "$(LDFLAGS)" ./cmd/teamcontext
+	sudo cp $(BINARY) /usr/local/bin/$(BINARY)
+	@echo "✓ Installed to ~/go/bin/$(BINARY) and /usr/local/bin/$(BINARY)"
+
+# Install to ~/go/bin only (no sudo required)
+install-local:
+	go install -ldflags "$(LDFLAGS)" ./cmd/teamcontext
+	@echo "✓ Installed to ~/go/bin/$(BINARY)"
 
 clean:
 	rm -f $(BINARY)
@@ -39,10 +47,7 @@ release: clean
 		echo "Built: dist/$(BINARY)-$${platform%/*}-$${platform#*/}"; \
 	done
 
-# Build for current platform and copy to /usr/local/bin
-install-system: build
-	cp $(BINARY) /usr/local/bin/$(BINARY)
-	@echo "Installed to /usr/local/bin/$(BINARY)"
+
 
 # Generate SHA256 checksums for release artifacts
 checksums:

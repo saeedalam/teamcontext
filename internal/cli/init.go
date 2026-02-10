@@ -7,7 +7,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/saeedalam/teamcontext/internal/git"
@@ -149,43 +148,32 @@ cache/
 `
 	os.WriteFile(filepath.Join(tcDir, ".gitignore"), []byte(gitignore), 0644)
 
-	// Run full project indexing and git history processing in parallel
+	// Run full project indexing and git history processing sequentially to avoid resource contention
 	if !skipIndexing {
 		fmt.Println("")
 		fmt.Println("Indexing project files and processing git history...")
 
-		var wg sync.WaitGroup
+		// Phase 1: File Indexing
+		fmt.Println("  [1/2] Starting file indexing...")
+		jsonStore := storage.NewJSONStore(tcDir)
+		sqliteIndex, err := storage.NewSQLiteIndex(tcDir)
+		if err != nil {
+			fmt.Printf("  [ERROR] Could not initialize SQLite index: %v\n", err)
+			return
+		}
+		workerMgr := worker.NewManager(tcDir, jsonStore, sqliteIndex)
+		indexed, err := workerMgr.InitProject()
+		if err != nil {
+			fmt.Printf("  [WARNING] Indexing completed with errors: %v\n", err)
+		}
+		fmt.Printf("  ✓ Phase 1 complete: Indexed %d files\n", indexed)
 
-		// Goroutine 1: Index project files
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			fmt.Println("  [DEBUG] Goroutine 1: Starting file indexing...")
-			jsonStore := storage.NewJSONStore(tcDir)
-			sqliteIndex, err := storage.NewSQLiteIndex(tcDir)
-			if err != nil {
-				fmt.Printf("  [ERROR] Could not initialize SQLite index: %v\n", err)
-				return
-			}
-			workerMgr := worker.NewManager(tcDir, jsonStore, sqliteIndex)
-			indexed, err := workerMgr.InitProject()
-			if err != nil {
-				fmt.Printf("  [WARNING] Indexing completed with errors: %v\n", err)
-			}
-			fmt.Printf("  ✓ [DEBUG] Goroutine 1 complete: Indexed %d files\n", indexed)
-		}()
-
-		// Goroutine 2: Process git history
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			fmt.Println("  [DEBUG] Goroutine 2: Starting git history processing...")
-			report, err := git.ProcessGitHistory(cwd)
-			if err != nil {
-				fmt.Printf("  [WARNING] Git history processing failed: %v\n", err)
-				return
-			}
-
+		// Phase 2: Git History
+		fmt.Println("  [2/2] Starting git history processing...")
+		report, err := git.ProcessGitHistory(cwd)
+		if err != nil {
+			fmt.Printf("  [WARNING] Git history processing failed: %v\n", err)
+		} else {
 			// Cross-reference linked repos if configured
 			configPath := filepath.Join(tcDir, "config.json")
 			if configData, err := os.ReadFile(configPath); err == nil {
@@ -199,11 +187,9 @@ cache/
 			if err := git.WriteReportFiles(report, knowledgeDir); err != nil {
 				fmt.Printf("  [WARNING] Could not write git reports: %v\n", err)
 			} else {
-				fmt.Printf("  ✓ [DEBUG] Goroutine 2 complete: Processed %d commits\n", report.CommitCount)
+				fmt.Printf("  ✓ Phase 2 complete: Processed %d commits\n", report.CommitCount)
 			}
-		}()
-
-		wg.Wait()
+		}
 
 		// Auto-populate project metadata from indexed data
 		autoPopulateProjectMetadata(cwd, tcDir)
