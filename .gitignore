@@ -1,0 +1,39 @@
+# Binaries
+/teamcontext
+/teamcontext.exe
+dist/
+build/
+
+# IDE
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test
+coverage.out
+coverage.html
+
+# TeamContext runtime (these are per-project, not part of the tool source)
+# Note: .teamcontext/ directories in USER projects are git-tracked by design.
+# The SQLite cache inside .teamcontext is gitignored per-project via .teamcontext/.gitignore
+
+# Local IDE/runtime artifacts for this repository
+.cursor/
+.vscode/
+.windsurf/
+.teamcontext/
+mcp.json
+
+# Secret and environment files should never be committed
+.env
+.env.*
+*.secret
+secrets/
+*.pem
+*.key
+*.p12
